@@ -32,7 +32,7 @@ class KmmsSpool(object):
 
         self.load_power = config.getfloat('load_power', 1., minval=0.01, maxval=1.)
         self.unload_power = config.getfloat('unload_power', 1., minval=0.01, maxval=1.)
-        self.timeout = config.getfloat('timeout', 30.0, minval=PIN_MIN_TIME, maxval=600000)
+        self.timeout = config.getfloat('timeout', 15.0, minval=PIN_MIN_TIME, maxval=120)
         self.timeout_timer = None
         self.release_pulse = config.getfloat('release_pulse', 0.020,
                                              minval=PIN_MIN_TIME, maxval=MAX_SCHEDULE_TIME)
@@ -130,15 +130,25 @@ class KmmsSpool(object):
             return
 
         self._log_info("stop and release")
-
-        # Start reverse pulse
-        reverse_value = self.release_pulse_power if self.last_value < 0. else -self.release_pulse_power
-        self.set_pin(print_time, reverse_value)
-        # Wait
         toolhead = self.printer.lookup_object('toolhead')
+
+        prev_unloading = self.last_value < 0.
+
+        # Wait for spool to settle
+        self.set_pin(print_time, 0.)
+        toolhead.dwell(0.1)
+        if prev_unloading:
+            # Move forward tiny bit
+            self.set_pin(toolhead.print_time, self.load_power)
+            toolhead.dwell(2 * self.release_pulse)
+            # Wait
+            self.set_pin(toolhead.print_time, 0.)
+            toolhead.dwell(0.1)
+        # Gear release pulse
+        self.set_pin(toolhead.print_time, -self.release_pulse_power)
         toolhead.dwell(self.release_pulse)
         # Stop
-        self.set_pin(print_time, 0.)
+        self.set_pin(toolhead.print_time, 0.)
 
     def unload_spool(self, print_time):
         eventtime = self.reactor.monotonic()
