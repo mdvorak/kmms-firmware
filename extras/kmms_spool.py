@@ -20,8 +20,6 @@ class KmmsSpool(object):
     STATUS_UNLOADING = "Unloading"
 
     def __init__(self, config):
-        self.full_name = config.get_name()
-        self.name = self.full_name.split()[-1]
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object('gcode')
         self.reactor = self.printer.get_reactor()
@@ -29,6 +27,10 @@ class KmmsSpool(object):
         pins = self.printer.lookup_object('pins')
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
+
+        self.full_name = config.get_name()
+        self.name = self.full_name.split()[-1]
+        self.spool = self.name.replace('spool_', '')
 
         # Filament Sensor
         self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_sensor_pin'))
@@ -75,6 +77,7 @@ class KmmsSpool(object):
         self._trigger_completion = None
         self._timeout_timer = None
 
+        self.printer.register_event_handler("kmms_spool:insert", self._handle_insert)
         self.printer.register_event_handler("kmms_spool:runout", self._handle_runout)
 
         # Register commands
@@ -169,11 +172,10 @@ class KmmsSpool(object):
 
     def load_spool(self, print_time, wait=True):
         self._reset_state()
+        completion = self._trigger_completion = self.reactor.completion()
 
         eventtime = self.reactor.monotonic()
         status = self.get_status(eventtime)
-
-        completion = self._trigger_completion = self.reactor.completion()
 
         if not status['filament_detected']:
             # No filament detected
@@ -194,11 +196,10 @@ class KmmsSpool(object):
 
     def unload_spool(self, print_time, wait=True):
         self._reset_state()
+        completion = self._trigger_completion = self.reactor.completion()
 
         eventtime = self.reactor.monotonic()
         status = self.get_status(eventtime)
-
-        completion = self._trigger_completion = self.reactor.completion()
 
         if not status['filament_detected']:
             # No filament detected
@@ -219,7 +220,7 @@ class KmmsSpool(object):
 
     def _handle_timeout(self, eventtime):
         self._log_info("timeout detected during operation")
-        self.gcode.respond_info("Timeout detected on spool %s during %s" % (self.name, self.status.lower()), log=False)
+        self.gcode.respond_info("Timeout detected on spool %s during %s" % (self.spool, self.status.lower()), log=False)
 
         self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
         self.toolhead.register_lookahead_callback(
@@ -227,28 +228,35 @@ class KmmsSpool(object):
 
         return self.reactor.NEVER
 
+    def _handle_insert(self, eventtime, name):
+        if name != self.name:
+            return
+        self.gcode.respond_info("Filament detected on spool %s" % self.spool, log=False)
+
     def _handle_runout(self, eventtime, name):
         if name != self.name:
             return
 
-        self.gcode.respond_info("Runout detected on spool %s when %s" % (self.name, self.status.lower()), log=False)
+        self.gcode.respond_info("Runout detected on spool %s when %s" % (self.spool, self.status.lower()), log=False)
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.stop())
 
     def _resolve_state(self, result):
-        if self._trigger_completion is not None and not self._trigger_completion.test():
-            self._trigger_completion.complete(result)
-            self._trigger_completion = None
+        self.set_pin(self.toolhead.print_time, 0.)
+
+        timer = self._timeout_timer
+        self._timeout_timer = None
+        if timer is not None:
+            self.reactor.unregister_timer(timer)
+
+        completion = self._trigger_completion
+        self._trigger_completion = None
+        if completion is not None and not completion.test():
+            completion.complete(result)
 
     def _reset_state(self):
-        if self._timeout_timer is not None:
-            self.reactor.unregister_timer(self._timeout_timer)
-            self._timeout_timer = None
-
+        self.last_start = None
         self._resolve_state(None)
-        self.last_load_start = self.last_start = None
-
-        self.set_pin(self.toolhead.print_time, 0.)
 
     # Commands
 
