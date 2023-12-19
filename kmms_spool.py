@@ -209,7 +209,7 @@ class KmmsSpool(object):
 
     def _log_info(self, msg, *args, **kwargs):
         args = (self.reactor.monotonic(), self.name) + args
-        logging.info("KMMS %.6f: Spool %s " + msg, args, **kwargs)
+        logging.info("KMMS %.6f: Spool %s " + msg, *args, **kwargs)
 
     def _resend_current_val(self, eventtime):
         if self.last_value == 0.:
