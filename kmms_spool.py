@@ -103,7 +103,7 @@ class KmmsSpool(object):
             self.timeout_timer = None
 
         if not is_resend:
-            logging.info("%s %.6f: New value %.3f" % (self.full_name, event_time, value))
+            self._log_info("move %.3f", value)
 
         if value >= 0.:
             self.unload_pin.set_pwm(event_time, 0., cycle_time)
@@ -129,7 +129,7 @@ class KmmsSpool(object):
         if self.last_value == 0.:
             return
 
-        logging.info("%s %.6f: Stopping spool" % (self.full_name, event_time))
+        self._log_info("stop and release")
 
         # Start reverse pulse
         reverse_value = self.release_pulse_power if self.last_value < 0. else -self.release_pulse_power
@@ -155,8 +155,8 @@ class KmmsSpool(object):
             return
 
         # Load
-        logging.info("%s %.6f: Loading spool" % (self.full_name, event_time))
-        self.set_pin(event_time, self.load_power)
+        self._log_info("loading")
+        self.set_pin(print_time, self.load_power)
 
     def _timeout_handler(self, event_time):
         logging.info("%s %.6f: Timeout detected" % (self.full_name, event_time))
@@ -202,7 +202,11 @@ class KmmsSpool(object):
 
     # Helpers
 
-    def _resend_current_val(self, event_time):
+    def _log_info(self, msg, *args, **kwargs):
+        args = (self.reactor.monotonic(), self.name) + args
+        logging.info("KMMS %.6f: Spool %s " + msg, args, **kwargs)
+
+    def _resend_current_val(self, eventtime):
         if self.last_value == 0.:
             self.reactor.unregister_timer(self.resend_timer)
             self.resend_timer = None
@@ -308,7 +312,7 @@ class SpoolRunoutHelper:
             self.reactor.register_callback(self._insert_event_handler)
         else:  # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("%s %.6f: Runout event detected" % (self.full_name, event_time))
+            logging.info("KMMS %.6f: Spool %s runout event detected", eventtime, self.name)
             self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
