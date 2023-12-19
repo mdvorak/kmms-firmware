@@ -81,22 +81,22 @@ class KmmsSpool(object):
                                         self.cmd_KMMS_SPOOL_UNLOAD,
                                         desc=self.cmd_KMMS_SPOOL_UNLOAD_help)
 
-    def get_status(self, event_time):
-        filament_status = self.filament_switch.get_status(event_time)
+    def get_status(self, eventtime):
+        filament_status = self.filament_switch.get_status(eventtime)
 
         return {
             'filament_detected': filament_status['filament_detected'],
             'value': self.last_value
         }
 
-    def set_pin(self, event_time, value, cycle_time=None, is_resend=False):
+    def set_pin(self, print_time, value, cycle_time=None, is_resend=False):
         if cycle_time is None:
             cycle_time = self.default_cycle_time
 
         if value == self.last_value and cycle_time == self.last_cycle_time:
             if not is_resend:
                 return
-        event_time = max(event_time, self.last_print_time + PIN_MIN_TIME)
+        print_time = max(print_time, self.last_print_time + PIN_MIN_TIME)
 
         if not is_resend and self.timeout_timer is not None:
             self.reactor.unregister_timer(self.timeout_timer)
@@ -106,15 +106,15 @@ class KmmsSpool(object):
             self._log_info("move %.3f", value)
 
         if value >= 0.:
-            self.unload_pin.set_pwm(event_time, 0., cycle_time)
-            self.load_pin.set_pwm(event_time, value, cycle_time)
+            self.unload_pin.set_pwm(print_time, 0., cycle_time)
+            self.load_pin.set_pwm(print_time, value, cycle_time)
         else:
-            self.load_pin.set_pwm(event_time, 0., cycle_time)
-            self.unload_pin.set_pwm(event_time, abs(value), cycle_time)
+            self.load_pin.set_pwm(print_time, 0., cycle_time)
+            self.unload_pin.set_pwm(print_time, abs(value), cycle_time)
 
         self.last_value = value
         self.last_cycle_time = cycle_time
-        self.last_print_time = event_time
+        self.last_print_time = print_time
 
         if self.resend_interval and self.resend_timer is None:
             self.resend_timer = self.reactor.register_timer(
@@ -122,10 +122,10 @@ class KmmsSpool(object):
 
         if value != 0. and self.timeout_timer is None:
             self.timeout_timer = self.reactor.register_timer(
-                self._timeout_handler, event_time + self.timeout
+                self._timeout_handler, self.reactor.monotonic() + self.timeout
             )
 
-    def stop_spool(self, event_time):
+    def stop_spool(self, print_time):
         if self.last_value == 0.:
             return
 
@@ -133,24 +133,26 @@ class KmmsSpool(object):
 
         # Start reverse pulse
         reverse_value = self.release_pulse_power if self.last_value < 0. else -self.release_pulse_power
-        self.set_pin(event_time, reverse_value)
+        self.set_pin(print_time, reverse_value)
         # Wait
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.dwell(self.release_pulse)
         # Stop
-        self.set_pin(event_time, 0.)
+        self.set_pin(print_time, 0.)
 
-    def unload_spool(self, event_time):
-        status = self.get_status(event_time)
+    def unload_spool(self, print_time):
+        eventtime = self.reactor.monotonic()
+        status = self.get_status(eventtime)
         if not status['filament_detected']:
             return
 
         # Unload
-        logging.info("%s %.6f: Unloading spool" % (self.full_name, event_time))
-        self.set_pin(event_time, -self.unload_power)
+        self._log_info("unloading")
+        self.set_pin(print_time, -self.unload_power)
 
-    def load_spool(self, event_time):
-        status = self.get_status(event_time)
+    def load_spool(self, print_time):
+        eventtime = self.reactor.monotonic()
+        status = self.get_status(eventtime)
         if not status['filament_detected']:
             return
 
@@ -158,9 +160,12 @@ class KmmsSpool(object):
         self._log_info("loading")
         self.set_pin(print_time, self.load_power)
 
-    def _timeout_handler(self, event_time):
-        logging.info("%s %.6f: Timeout detected" % (self.full_name, event_time))
-        self.stop_spool(event_time)
+    def _timeout_handler(self, eventtime):
+        self._log_info("timeout detected during operation")
+
+        toolhead = self.printer.lookup_object('toolhead')
+        toolhead.register_lookahead_callback(
+            lambda print_time: self.stop_spool(print_time))
         return self.reactor.NEVER
 
     # Commands
@@ -221,10 +226,6 @@ class KmmsSpool(object):
         self.set_pin(print_time + PIN_MIN_TIME,
                      self.last_value, self.last_cycle_time, True)
         return systime + self.resend_interval
-
-    def _is_printing(self, event_time):
-        idle_timeout = self.printer.lookup_object("idle_timeout")
-        return idle_timeout.get_status(None)["state"] == "Printing"
 
     def _define_filament_switch(self, config, name, switch_pin):
         section = "filament_switch_sensor %s" % name
