@@ -220,7 +220,9 @@ class KmmsSpool(object):
 
     def _handle_timeout(self, eventtime):
         self._log_info("timeout detected during operation")
-        self.gcode.respond_info("Timeout detected on spool %s during %s" % (self.spool, self.status.lower()), log=False)
+        self.gcode.respond_info(
+            "Timeout detected on spool %s during %s after %.1f s" % (self.spool, self.status.lower(), self.timeout),
+            log=False)
 
         self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
         self.toolhead.register_lookahead_callback(
@@ -239,6 +241,8 @@ class KmmsSpool(object):
 
         if self.status == self.STATUS_UNLOADING:
             msg = "Filament successfully unloaded to spool %s" % self.spool
+            if self.last_start is not None:
+                msg += " in %.1f s" % (eventtime - self.last_start)
         else:
             msg = "Runout detected on spool %s when %s" % (self.spool, self.status.lower())
 
