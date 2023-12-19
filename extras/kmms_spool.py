@@ -214,6 +214,8 @@ class KmmsSpool(object):
 
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.stop())
+
+        self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
         return self.reactor.NEVER
 
     def _handle_runout(self, eventtime, name):
