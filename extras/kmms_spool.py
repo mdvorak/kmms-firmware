@@ -15,6 +15,10 @@ MAX_SCHEDULE_TIME = 5.0
 
 
 class KmmsSpool(object):
+    STATUS_IDLE = "Idle"
+    STATUS_LOADING = "Loading"
+    STATUS_UNLOADING = "Unloading"
+
     def __init__(self, config):
         self.full_name = config.get_name()
         self.name = self.full_name.split()[-1]
@@ -66,6 +70,7 @@ class KmmsSpool(object):
         self.load_pin.setup_start_value(self.last_value, 0.)
 
         # State tracking
+        self.status = self.STATUS_IDLE
         self.last_duration = self.last_start = None
         self._trigger_completion = None
         self._timeout_timer = None
@@ -96,6 +101,7 @@ class KmmsSpool(object):
         filament_status = self.filament_switch.get_status(eventtime)
 
         return {
+            'status': self.status,
             'filament_detected': filament_status['filament_detected'],
             'value': self.last_value
         }
@@ -113,9 +119,11 @@ class KmmsSpool(object):
             self._log_debug("move cmd %.3f", value)
 
         if value >= 0.:
+            self.status = self.STATUS_LOADING if value > 0 else self.STATUS_IDLE
             self.unload_pin.set_pwm(print_time, 0., cycle_time)
             self.load_pin.set_pwm(print_time, value, cycle_time)
         else:
+            self.status = self.STATUS_UNLOADING
             self.load_pin.set_pwm(print_time, 0., cycle_time)
             self.unload_pin.set_pwm(print_time, abs(value), cycle_time)
 
@@ -211,17 +219,19 @@ class KmmsSpool(object):
 
     def _handle_timeout(self, eventtime):
         self._log_info("timeout detected during operation")
+        self.gcode.respond_info("Timeout detected on spool %s during %s" % (self.name, self.status.lower()), log=False)
 
+        self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.stop())
 
-        self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
         return self.reactor.NEVER
 
     def _handle_runout(self, eventtime, name):
         if name != self.name:
             return
 
+        self.gcode.respond_info("Runout detected on spool %s when %s" % (self.name, self.status.lower()), log=False)
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.stop())
 
