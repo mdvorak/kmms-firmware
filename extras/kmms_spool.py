@@ -21,7 +21,10 @@ class KmmsSpool(object):
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object('gcode')
         self.reactor = self.printer.get_reactor()
+        self.toolhead = None
         pins = self.printer.lookup_object('pins')
+
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
         # Filament Sensor
         self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_sensor_pin'))
@@ -33,7 +36,6 @@ class KmmsSpool(object):
         self.load_power = config.getfloat('load_power', 1., minval=0.01, maxval=1.)
         self.unload_power = config.getfloat('unload_power', 1., minval=0.01, maxval=1.)
         self.timeout = config.getfloat('timeout', 15.0, minval=PIN_MIN_TIME, maxval=120)
-        self.timeout_timer = None
         self.release_pulse = config.getfloat('release_pulse', 0.020,
                                              minval=PIN_MIN_TIME, maxval=MAX_SCHEDULE_TIME)
         self.release_pulse_power = config.getfloat('release_pulse_power', .5,
@@ -49,7 +51,6 @@ class KmmsSpool(object):
         self.last_cycle_time = self.default_cycle_time = cycle_time
         self.last_print_time = 0.
 
-        self.reactor = self.printer.get_reactor()
         self.resend_timer = None
         self.resend_interval = 0.
 
@@ -64,7 +65,14 @@ class KmmsSpool(object):
         self.last_value = 0.
         self.load_pin.setup_start_value(self.last_value, 0.)
 
-        # Register events and commands
+        # State tracking
+        self.last_duration = self.last_start = None
+        self._trigger_completion = None
+        self._timeout_timer = None
+
+        self.printer.register_event_handler("kmms_spool:runout", self._handle_runout)
+
+        # Register commands
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
                                         self.cmd_SET_PIN,
                                         desc=self.cmd_SET_PIN_help)
@@ -80,6 +88,9 @@ class KmmsSpool(object):
         self.gcode.register_mux_command("KMMS_SPOOL_UNLOAD", "SPOOL", self.name,
                                         self.cmd_KMMS_SPOOL_UNLOAD,
                                         desc=self.cmd_KMMS_SPOOL_UNLOAD_help)
+
+    def _handle_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
 
     def get_status(self, eventtime):
         filament_status = self.filament_switch.get_status(eventtime)
@@ -98,12 +109,8 @@ class KmmsSpool(object):
                 return
         print_time = max(print_time, self.last_print_time + PIN_MIN_TIME)
 
-        if not is_resend and self.timeout_timer is not None:
-            self.reactor.unregister_timer(self.timeout_timer)
-            self.timeout_timer = None
-
         if not is_resend:
-            self._log_info("move %.3f", value)
+            self._log_debug("move cmd %.3f", value)
 
         if value >= 0.:
             self.unload_pin.set_pwm(print_time, 0., cycle_time)
@@ -120,63 +127,116 @@ class KmmsSpool(object):
             self.resend_timer = self.reactor.register_timer(
                 self._resend_current_val, self.reactor.NOW)
 
-        if value != 0. and self.timeout_timer is None:
-            self.timeout_timer = self.reactor.register_timer(
-                self._timeout_handler, self.reactor.monotonic() + self.timeout
-            )
-
-    def stop_spool(self, print_time):
+    def stop(self):
+        # Nothing to do, just ensure there is no pending state
         if self.last_value == 0.:
+            self._reset_state()
             return
 
         self._log_info("stop and release")
-        toolhead = self.printer.lookup_object('toolhead')
 
         prev_unloading = self.last_value < 0.
 
         # Wait for spool to settle
-        self.set_pin(print_time, 0.)
-        toolhead.dwell(0.1)
+        self.set_pin(self.toolhead.print_time, 0.)
+        self.toolhead.dwell(0.1)
         if prev_unloading:
             # Move forward tiny bit
-            self.set_pin(toolhead.print_time, self.load_power)
-            toolhead.dwell(2 * self.release_pulse)
+            self.set_pin(self.toolhead.print_time, self.load_power)
+            self.toolhead.dwell(2 * self.release_pulse)
             # Wait
-            self.set_pin(toolhead.print_time, 0.)
-            toolhead.dwell(0.1)
+            self.set_pin(self.toolhead.print_time, 0.)
+            self.toolhead.dwell(0.1)
         # Gear release pulse
-        self.set_pin(toolhead.print_time, -self.release_pulse_power)
-        toolhead.dwell(self.release_pulse)
+        self.set_pin(self.toolhead.print_time, -self.release_pulse_power)
+        self.toolhead.dwell(self.release_pulse)
         # Stop
-        self.set_pin(toolhead.print_time, 0.)
+        self.set_pin(self.toolhead.print_time, 0.)
 
-    def unload_spool(self, print_time):
+        # Done
+        result = self.reactor.monotonic() - self.last_start if self.last_start is not None else None
+        if result is not None:
+            self.last_duration = result
+        self._resolve_state(result)
+
+    def load_spool(self, print_time, wait=True):
+        self._reset_state()
+
         eventtime = self.reactor.monotonic()
         status = self.get_status(eventtime)
+
+        completion = self._trigger_completion = self.reactor.completion()
+
         if not status['filament_detected']:
-            return
+            # No filament detected
+            self._resolve_state(None)
+        else:
+            # Load
+            self._log_info("loading")
+            self.last_start = eventtime
+            self.set_pin(print_time, self.load_power)
+            # Timeout
+            timeout_wake_time = eventtime + self.timeout
+            self._timeout_timer = self.reactor.register_timer(self._handle_timeout, timeout_wake_time)
+            # Wait
+            if wait:
+                completion.wait(timeout_wake_time + 0.3)
 
-        # Unload
-        self._log_info("unloading")
-        self.set_pin(print_time, -self.unload_power)
+        return completion
 
-    def load_spool(self, print_time):
+    def unload_spool(self, print_time, wait=True):
+        self._reset_state()
+
         eventtime = self.reactor.monotonic()
         status = self.get_status(eventtime)
+
+        completion = self._trigger_completion = self.reactor.completion()
+
         if not status['filament_detected']:
-            return
+            # No filament detected
+            self._resolve_state(None)
+        else:
+            # Unload
+            self._log_info("unloading")
+            self.last_start = eventtime
+            self.set_pin(print_time, -self.unload_power)
+            # Timeout
+            timeout_wake_time = eventtime + self.timeout
+            self._timeout_timer = self.reactor.register_timer(self._handle_timeout, timeout_wake_time)
+            # Wait
+            if wait:
+                completion.wait(timeout_wake_time + 0.3)
 
-        # Load
-        self._log_info("loading")
-        self.set_pin(print_time, self.load_power)
+        return completion
 
-    def _timeout_handler(self, eventtime):
+    def _handle_timeout(self, eventtime):
         self._log_info("timeout detected during operation")
 
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.register_lookahead_callback(
-            lambda print_time: self.stop_spool(print_time))
+        self.toolhead.register_lookahead_callback(
+            lambda print_time: self.stop())
         return self.reactor.NEVER
+
+    def _handle_runout(self, eventtime, name):
+        if name != self.name:
+            return
+
+        self.toolhead.register_lookahead_callback(
+            lambda print_time: self.stop())
+
+    def _resolve_state(self, result):
+        if self._trigger_completion is not None and not self._trigger_completion.test():
+            self._trigger_completion.complete(result)
+            self._trigger_completion = None
+
+    def _reset_state(self):
+        if self._timeout_timer is not None:
+            self.reactor.unregister_timer(self._timeout_timer)
+            self._timeout_timer = None
+
+        self._resolve_state(None)
+        self.last_load_start = self.last_start = None
+
+        self.set_pin(self.toolhead.print_time, 0.)
 
     # Commands
 
@@ -187,39 +247,42 @@ class KmmsSpool(object):
         value = gcmd.get_float('VALUE', minval=-1., maxval=1.)
         cycle_time = gcmd.get_float('CYCLE_TIME', self.default_cycle_time,
                                     above=0., maxval=MAX_SCHEDULE_TIME)
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.register_lookahead_callback(
+        self.toolhead.register_lookahead_callback(
             lambda print_time: self.set_pin(print_time, value, cycle_time))
 
     cmd_KMMS_SPOOL_STOP_help = "Stop and release the gears. Low-level command, doesn't do any sanity checks."
 
     def cmd_KMMS_SPOOL_STOP(self, gcmd):
-        if self.last_value == 0.:
-            return
-
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.register_lookahead_callback(
-            lambda print_time: self.stop_spool(print_time))
+        self.toolhead.register_lookahead_callback(
+            lambda print_time: self.stop())
 
     cmd_KMMS_SPOOL_UNLOAD_help = "Unload given spool. Low-level command, doesn't do any sanity checks."
 
     def cmd_KMMS_SPOOL_UNLOAD(self, gcmd):
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.register_lookahead_callback(
-            lambda print_time: self.unload_spool(print_time))
+        wait = bool(gcmd.get_int('WAIT', 1, minval=0))
+
+        self.toolhead.register_lookahead_callback(
+            lambda print_time: self.unload_spool(print_time, wait)
+        )
 
     cmd_KMMS_SPOOL_LOAD_help = "Load given spool. Low-level command, doesn't do any sanity checks."
 
     def cmd_KMMS_SPOOL_LOAD(self, gcmd):
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.register_lookahead_callback(
-            lambda print_time: self.load_spool(print_time))
+        wait = bool(gcmd.get_int('WAIT', 1, minval=0))
+
+        self.toolhead.register_lookahead_callback(
+            lambda print_time: self.load_spool(print_time, wait)
+        )
 
     # Helpers
 
     def _log_info(self, msg, *args, **kwargs):
         args = (self.reactor.monotonic(), self.name) + args
         logging.info("KMMS %.6f: Spool %s " + msg, *args, **kwargs)
+
+    def _log_debug(self, msg, *args, **kwargs):
+        args = (self.reactor.monotonic(), self.name) + args
+        logging.debug("KMMS %.6f: Spool %s " + msg, *args, **kwargs)
 
     def _resend_current_val(self, eventtime):
         if self.last_value == 0.:
