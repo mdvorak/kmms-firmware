@@ -7,16 +7,31 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import logging
+from extras.filament_switch_sensor import SwitchSensor
+
 PIN_MIN_TIME = 0.100
 RESEND_HOST_TIME = 0.300 + PIN_MIN_TIME
 MAX_SCHEDULE_TIME = 5.0
+EVENT_DELAY = 3.0
 
 
-class KmmsSpool:
+class KmmsSpool(SwitchSensor, object):
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.gcode = self.printer.lookup_object('gcode')
+        self.reactor = self.printer.get_reactor()
         pins = self.printer.lookup_object('pins')
+        buttons = self.printer.load_object(config, 'buttons')
 
+        # Filament Sensor
+        buttons.register_buttons([config.get('filament_sensor_pin')], self._button_handler)
+
+        self.min_event_systime = self.reactor.NEVER
+        self.filament_present = False
+        self.sensor_enabled = True
+
+        # Motor PWM
         self.load_pin = pins.setup_pin('pwm', config.get('load_pin'))
         self.unload_pin = pins.setup_pin('pwm', config.get('unload_pin'))
 
@@ -48,18 +63,71 @@ class KmmsSpool:
         self.last_value = 0.
         self.load_pin.setup_start_value(self.last_value, 0.)
 
-        pin_name = config.get_name().split()[1]
-        gcode = self.printer.lookup_object('gcode')
-        gcode.register_mux_command("SET_PIN", "PIN", pin_name,
-                                   self.cmd_SET_PIN,
-                                   desc=self.cmd_SET_PIN_help)
+        # Register events and commands
+        self.full_name = config.get_name()
+        self.name = self.full_name.split()[-1]
 
-    def get_status(self):
-        return {'value': self.last_value}
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+
+        self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
+                                        self.cmd_SET_PIN,
+                                        desc=self.cmd_SET_PIN_help)
+
+        self.gcode.register_mux_command("QUERY_FILAMENT_SENSOR", "SENSOR", self.name,
+                                        self.cmd_QUERY_FILAMENT_SENSOR,
+                                        desc=self.cmd_QUERY_FILAMENT_SENSOR_help)
+
+    def _exec_gcode(self, prefix, template):
+        try:
+            self.gcode.run_script(prefix + template.render() + "\nM400")
+        except Exception:
+            logging.exception("Script running error")
+        self.min_event_systime = self.reactor.monotonic() + EVENT_DELAY
+
+    def _is_printing(self, eventtime):
+        idle_timeout = self.printer.lookup_object("idle_timeout")
+        return idle_timeout.get_status(None)["state"] == "Printing"
+
+    def _handle_ready(self):
+        self.min_event_systime = self.reactor.monotonic() + 2.
+
+    def _button_handler(self, eventtime, state):
+        if state == self.filament_present:
+            return
+
+        self.filament_present = state
+        if self.last_value == 0.:
+            # Not active
+            if self.filament_present:
+                self._insert_event_handler(eventtime)
+            else:
+                self._runout_event_handler(eventtime)
+        else:
+            # Currently active, handle event
+            self._stop_event_handler(eventtime)
+
+    def _insert_event_handler(self, eventtime):
+        if self._is_printing(eventtime):
+            logging.info("[%s] Filament inserted while printing, skipping event" % self.full_name)
+            return
+
+        # self._exec_gcode("", self.insert_gcode)
+
+    def _runout_event_handler(self, eventtime):
+        pass
+
+    def _stop_event_handler(self, eventtime):
+        pass
+
+    def get_status(self, eventtime):
+        return {
+            'filament_detected': bool(self.filament_present),
+            'value': self.last_value
+        }
 
     def set_pin(self, print_time, value, cycle_time=None, is_resend=False):
         if cycle_time is None:
-            cycle_time = cycle_time
+            cycle_time = self.default_cycle_time
 
         if value == self.last_value and cycle_time == self.last_cycle_time:
             if not is_resend:
@@ -89,6 +157,15 @@ class KmmsSpool:
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.register_lookahead_callback(
             lambda print_time: self.set_pin(print_time, value, cycle_time))
+
+    cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
+
+    def cmd_QUERY_FILAMENT_SENSOR(self, gcmd):
+        if self.filament_present:
+            msg = "Filament Sensor %s: filament detected" % self.name
+        else:
+            msg = "Filament Sensor %s: filament not detected" % self.name
+        gcmd.respond_info(msg)
 
     def _resend_current_val(self):
         if self.last_value == 0.:
