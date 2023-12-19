@@ -1,4 +1,4 @@
-# KMMS Spool config
+# KMMS spool config
 #
 # Based on
 # https://github.com/Klipper3d/klipper/blob/3417940fd82adf621f429f42289d3693ee832582/klippy/extras/output_pin.py
@@ -28,9 +28,8 @@ class KmmsSpool(object):
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
-        self.full_name = config.get_name()
-        self.name = self.full_name.split()[-1]
-        self.spool = self.name.replace('spool_', '')
+        self.name = config.get_name().split()[-1]
+        self.spool_str = self.name.replace('spool_', '')
 
         # Filament Sensor
         self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_sensor_pin'))
@@ -221,7 +220,7 @@ class KmmsSpool(object):
     def _handle_timeout(self, eventtime):
         self._log_info("timeout detected during operation")
         self.gcode.respond_info(
-            "Timeout detected on spool %s during %s after %.1f s" % (self.spool, self.status.lower(), self.timeout),
+            "Timeout detected on spool %s during %s after %.1f s" % (self.spool_str, self.status.lower(), self.timeout),
             log=False)
 
         self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
@@ -233,19 +232,22 @@ class KmmsSpool(object):
     def _handle_insert(self, eventtime, name):
         if name != self.name:
             return
-        self.gcode.respond_info("Filament detected on spool %s" % self.spool, log=False)
+
+        self._log_info("insert event detected")
+        self.gcode.respond_info("Filament detected on spool %s" % self.spool_str, log=False)
 
     def _handle_runout(self, eventtime, name):
         if name != self.name:
             return
 
+        self._log_info("runout event detected")
+
         if self.status == self.STATUS_UNLOADING:
-            msg = "Filament successfully unloaded to spool %s" % self.spool
+            msg = "Filament successfully unloaded to spool %s" % self.spool_str
             if self.last_start is not None:
                 msg += " in %.1f s" % (eventtime - self.last_start)
         else:
-            msg = "Runout detected on spool %s when %s" % (self.spool, self.status.lower())
-
+            msg = "Runout detected on spool %s when %s" % (self.spool_str, self.status.lower())
         self.gcode.respond_info(msg, log=False)
 
         self.toolhead.register_lookahead_callback(
@@ -332,8 +334,8 @@ class KmmsSpool(object):
 
     def _define_filament_switch(self, config, name, switch_pin):
         section = "filament_switch_sensor %s" % name
-        insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % name
-        runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % name
+        insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
+        runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
 
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
@@ -344,7 +346,7 @@ class KmmsSpool(object):
         fs = self.printer.load_object(config, section)
 
         # Replace with custom runout_helper, because original fires runout event only during print
-        custom_helper = SpoolRunoutHelper(config.getsection(section))
+        custom_helper = SpoolRunoutHelper(config.getsection(section), self.name)
         fs.runout_helper = custom_helper
         fs.get_status = custom_helper.get_status
 
@@ -355,12 +357,14 @@ class SpoolRunoutHelper:
     # Based on
     # https://github.com/moggieuk/Happy-Hare/blob/63565368c072bff2673a7a97469fb7663f62ee12/extras/mmu_sensors.py
 
-    def __init__(self, config):
+    def __init__(self, config, spool_name):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
         self.name = config.get_name().split()[-1]
+        self.spool_name = spool_name
+
         self.min_event_systime = self.reactor.NEVER
         self.event_delay = 1.  # Time between generated events
         self.filament_present = False
@@ -385,11 +389,11 @@ class SpoolRunoutHelper:
         self.min_event_systime = self.reactor.monotonic() + 2.  # Time to wait until events are processed
 
     def _insert_event_handler(self, eventtime):
-        self.printer.send_event('kmms_spool:insert', eventtime, self.name)
+        self.printer.send_event('kmms_spool:insert', eventtime, self.spool_name)
         self._exec_gcode(self.insert_gcode)
 
     def _runout_event_handler(self, eventtime):
-        self.printer.send_event('kmms_spool:runout', eventtime, self.name)
+        self.printer.send_event('kmms_spool:runout', eventtime, self.spool_name)
         self._exec_gcode(self.runout_gcode)
 
     def _exec_gcode(self, template):
@@ -412,11 +416,9 @@ class SpoolRunoutHelper:
         # Let handler decide what processing is possible based on current state
         if is_filament_present:  # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("KMMS %.6f: Spool %s insert event detected", eventtime, self.name)
             self.reactor.register_callback(self._insert_event_handler)
         else:  # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("KMMS %.6f: Spool %s runout event detected", eventtime, self.name)
             self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
