@@ -236,7 +236,7 @@ class KmmsSpool(object):
         fs = self.printer.load_object(config, section)
 
         # Replace with custom runout_helper, because original fires runout event only during print
-        custom_helper = SpoolRunoutHelper(self.printer, name, insert_gcode, runout_gcode)
+        custom_helper = SpoolRunoutHelper(config.getsection(section))
         fs.runout_helper = custom_helper
         fs.get_status = custom_helper.get_status
 
@@ -244,19 +244,23 @@ class KmmsSpool(object):
 
 
 class SpoolRunoutHelper:
-    # Copy from
+    # Based on
     # https://github.com/moggieuk/Happy-Hare/blob/63565368c072bff2673a7a97469fb7663f62ee12/extras/mmu_sensors.py
 
-    def __init__(self, printer, name, insert_gcode, runout_gcode):
-        self.printer, self.name = printer, name
-        self.insert_gcode, self.runout_gcode = insert_gcode, runout_gcode
+    def __init__(self, config):
+        self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
+        self.name = config.get_name().split()[-1]
         self.min_event_systime = self.reactor.NEVER
         self.event_delay = 1.  # Time between generated events
         self.filament_present = False
         self.sensor_enabled = True
+
+        gcode_macro = self.printer.load_object(config, 'gcode_macro')
+        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '')
+        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '')
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -272,40 +276,42 @@ class SpoolRunoutHelper:
     def _handle_ready(self):
         self.min_event_systime = self.reactor.monotonic() + 2.  # Time to wait until events are processed
 
-    def _insert_event_handler(self, event_time):
+    def _insert_event_handler(self, eventtime):
+        self.printer.send_event('kmms_spool:insert', eventtime, self.name)
         self._exec_gcode(self.insert_gcode)
 
-    def _runout_event_handler(self, event_time):
+    def _runout_event_handler(self, eventtime):
+        self.printer.send_event('kmms_spool:runout', eventtime, self.name)
         self._exec_gcode(self.runout_gcode)
 
-    def _exec_gcode(self, command):
+    def _exec_gcode(self, template):
         try:
-            self.gcode.run_script(command)
+            self.gcode.run_script(template.render())
         except Exception:
-            logging.exception("Error running filament switch handler: `%s`" % command)
+            logging.exception("Script running error")
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
         if is_filament_present == self.filament_present:
             return
         self.filament_present = is_filament_present
-        event_time = self.reactor.monotonic()
+        eventtime = self.reactor.monotonic()
 
         # Don't handle too early or if disabled
-        if event_time < self.min_event_systime or not self.sensor_enabled:
+        if eventtime < self.min_event_systime or not self.sensor_enabled:
             return
 
         # Let handler decide what processing is possible based on current state
         if is_filament_present:  # Insert detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("%s %.6f: Insert event detected" % (self.name, event_time))
+            logging.info("KMMS %.6f: Spool %s insert event detected", eventtime, self.name)
             self.reactor.register_callback(self._insert_event_handler)
         else:  # Runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info("%s %.6f: Runout event detected" % (self.name, event_time))
+            logging.info("%s %.6f: Runout event detected" % (self.full_name, event_time))
             self.reactor.register_callback(self._runout_event_handler)
 
-    def get_status(self, event_time):
+    def get_status(self, eventtime):
         return {
             "filament_detected": bool(self.filament_present),
             "enabled": bool(self.sensor_enabled),
