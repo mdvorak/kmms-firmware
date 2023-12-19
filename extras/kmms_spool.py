@@ -237,7 +237,13 @@ class KmmsSpool(object):
         if name != self.name:
             return
 
-        self.gcode.respond_info("Runout detected on spool %s when %s" % (self.spool, self.status.lower()), log=False)
+        if self.status == self.STATUS_UNLOADING:
+            msg = "Filament successfully unloaded to spool %s" % self.spool
+        else:
+            msg = "Runout detected on spool %s when %s" % (self.spool, self.status.lower())
+
+        self.gcode.respond_info(msg, log=False)
+
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.stop())
 
