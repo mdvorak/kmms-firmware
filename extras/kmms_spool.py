@@ -238,7 +238,7 @@ class KmmsSpool(object):
             self.spool_str, self.last_status.lower(), self.timeout))
 
         # Fire event for other handlers
-        self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
+        self.printer.send_event('kmms:spool_timeout', eventtime, self.name)
         return self.reactor.NEVER
 
     def _insert_event_handler(self, eventtime):
