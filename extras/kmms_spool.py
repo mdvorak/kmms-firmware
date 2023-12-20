@@ -71,13 +71,13 @@ class KmmsSpool(object):
         self.load_pin.setup_start_value(self.last_value, 0.)
 
         # State tracking
-        self.status = self.STATUS_IDLE
+        self.last_status = self.STATUS_IDLE
         self.last_duration = self.last_start = None
         self._trigger_completion = None
         self._timeout_timer = None
 
-        self.printer.register_event_handler("kmms_spool:insert", self._handle_insert)
-        self.printer.register_event_handler("kmms_spool:runout", self._handle_runout)
+        self.printer.register_event_handler("filament:insert", self._handle_insert)
+        self.printer.register_event_handler("filament:runout", self._handle_runout)
 
         # Register commands
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
@@ -99,11 +99,21 @@ class KmmsSpool(object):
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
 
+    def _handle_insert(self, eventtime, name):
+        if name != self.name:
+            return
+        self.reactor.register_callback(self._insert_event_handler)
+
+    def _handle_runout(self, eventtime, name):
+        if name != self.name:
+            return
+        self.reactor.register_callback(self._runout_event_handler)
+
     def get_status(self, eventtime):
         filament_status = self.filament_switch.get_status(eventtime)
 
         return {
-            'status': self.status,
+            'status': self.last_status,
             'filament_detected': filament_status['filament_detected'],
             'value': self.last_value
         }
@@ -121,11 +131,11 @@ class KmmsSpool(object):
             self._log_debug("move cmd %.3f", value)
 
         if value >= 0.:
-            self.status = self.STATUS_LOADING if value > 0 else self.STATUS_IDLE
+            self._set_status(self.STATUS_LOADING if value > 0 else self.STATUS_IDLE)
             self.unload_pin.set_pwm(print_time, 0., cycle_time)
             self.load_pin.set_pwm(print_time, value, cycle_time)
         else:
-            self.status = self.STATUS_UNLOADING
+            self._set_status(self.STATUS_UNLOADING)
             self.load_pin.set_pwm(print_time, 0., cycle_time)
             self.unload_pin.set_pwm(print_time, abs(value), cycle_time)
 
@@ -218,40 +228,42 @@ class KmmsSpool(object):
         return completion
 
     def _handle_timeout(self, eventtime):
+        # Stop
         self._log_info("timeout detected during operation")
+        self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
+
+        # Notify user
         self.gcode.respond_info(
-            "Timeout detected on spool %s during %s after %.1f s" % (self.spool_str, self.status.lower(), self.timeout),
-            log=False)
+            "Timeout detected on spool %s during %s after %.1f s" % (self.spool_str, self.last_status.lower(), self.timeout))
 
+        # Fire event for other handlers
         self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
-        self.toolhead.register_lookahead_callback(
-            lambda print_time: self.stop())
-
         return self.reactor.NEVER
 
-    def _handle_insert(self, eventtime, name):
-        if name != self.name:
-            return
+    def _insert_event_handler(self, eventtime):
+        # Notify user
+        self.gcode.respond_info("Filament detected on spool %s" % self.spool_str)
 
-        self._log_info("insert event detected")
-        self.gcode.respond_info("Filament detected on spool %s" % self.spool_str, log=False)
+        # Execute custom handler
+        insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
+        self._exec_gcode(insert_gcode)
 
-    def _handle_runout(self, eventtime, name):
-        if name != self.name:
-            return
+    def _runout_event_handler(self, eventtime):
+        # First stop
+        self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
-        self._log_info("runout event detected")
-
-        if self.status == self.STATUS_UNLOADING:
+        # Notify user
+        if self.last_status == self.STATUS_UNLOADING:
             msg = "Filament successfully unloaded to spool %s" % self.spool_str
             if self.last_start is not None:
                 msg += " in %.1f s" % (eventtime - self.last_start)
         else:
-            msg = "Runout detected on spool %s when %s" % (self.spool_str, self.status.lower())
-        self.gcode.respond_info(msg, log=False)
+            msg = "Runout detected on spool %s when %s" % (self.spool_str, self.last_status.lower())
+        self.gcode.respond_info(msg)
 
-        self.toolhead.register_lookahead_callback(
-            lambda print_time: self.stop())
+        # Execute custom handler
+        runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
+        self._exec_gcode(runout_gcode)
 
     def _resolve_state(self, result):
         self.set_pin(self.toolhead.print_time, 0.)
@@ -269,6 +281,11 @@ class KmmsSpool(object):
     def _reset_state(self):
         self.last_start = None
         self._resolve_state(None)
+
+    def _set_status(self, status):
+        if status != self.last_status:
+            self.last_status = status
+            self.printer.send_event('kmms_spool:status', self.reactor.monotonic(), self.name, status)
 
     # Commands
 
@@ -332,114 +349,21 @@ class KmmsSpool(object):
                      self.last_value, self.last_cycle_time, True)
         return systime + self.resend_interval
 
+    def _exec_gcode(self, gcode):
+        try:
+            self.gcode.run_script(gcode)
+        except Exception:
+            logging.exception("Script running error")
+
     def _define_filament_switch(self, config, name, switch_pin):
         section = "filament_switch_sensor %s" % name
-        insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
-        runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
 
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
         config.fileconfig.set(section, "pause_on_runout", "False")
-        config.fileconfig.set(section, "insert_gcode", insert_gcode)
-        config.fileconfig.set(section, "runout_gcode", runout_gcode)
+        config.fileconfig.set(section, "event_delay", 1.)
 
-        fs = self.printer.load_object(config, section)
-
-        # Replace with custom runout_helper, because original fires runout event only during print
-        custom_helper = SpoolRunoutHelper(config.getsection(section), self.name)
-        fs.runout_helper = custom_helper
-        fs.get_status = custom_helper.get_status
-
-        return fs
-
-
-class SpoolRunoutHelper:
-    # Based on
-    # https://github.com/moggieuk/Happy-Hare/blob/63565368c072bff2673a7a97469fb7663f62ee12/extras/mmu_sensors.py
-
-    def __init__(self, config, spool_name):
-        self.printer = config.get_printer()
-        self.reactor = self.printer.get_reactor()
-        self.gcode = self.printer.lookup_object('gcode')
-
-        self.name = config.get_name().split()[-1]
-        self.spool_name = spool_name
-
-        self.min_event_systime = self.reactor.NEVER
-        self.event_delay = 1.  # Time between generated events
-        self.filament_present = False
-        self.sensor_enabled = True
-
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode', '')
-        self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode', '')
-
-        self.printer.register_event_handler("klippy:ready", self._handle_ready)
-
-        # We are going to replace previous runout_helper mux commands with ours
-        prev = self.gcode.mux_commands.get("QUERY_FILAMENT_SENSOR")
-        prev_key, prev_values = prev
-        prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
-
-        prev = self.gcode.mux_commands.get("SET_FILAMENT_SENSOR")
-        prev_key, prev_values = prev
-        prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
-
-    def _handle_ready(self):
-        self.min_event_systime = self.reactor.monotonic() + 2.  # Time to wait until events are processed
-
-    def _insert_event_handler(self, eventtime):
-        self.printer.send_event('kmms_spool:insert', eventtime, self.spool_name)
-        self._exec_gcode(self.insert_gcode)
-
-    def _runout_event_handler(self, eventtime):
-        self.printer.send_event('kmms_spool:runout', eventtime, self.spool_name)
-        self._exec_gcode(self.runout_gcode)
-
-    def _exec_gcode(self, template):
-        try:
-            self.gcode.run_script(template.render())
-        except Exception:
-            logging.exception("Script running error")
-        self.min_event_systime = self.reactor.monotonic() + self.event_delay
-
-    def note_filament_present(self, is_filament_present):
-        if is_filament_present == self.filament_present:
-            return
-        self.filament_present = is_filament_present
-        eventtime = self.reactor.monotonic()
-
-        # Don't handle too early or if disabled
-        if eventtime < self.min_event_systime or not self.sensor_enabled:
-            return
-
-        # Let handler decide what processing is possible based on current state
-        if is_filament_present:  # Insert detected
-            self.min_event_systime = self.reactor.NEVER
-            self.reactor.register_callback(self._insert_event_handler)
-        else:  # Runout detected
-            self.min_event_systime = self.reactor.NEVER
-            self.reactor.register_callback(self._runout_event_handler)
-
-    def get_status(self, eventtime):
-        return {
-            "filament_detected": bool(self.filament_present),
-            "enabled": bool(self.sensor_enabled),
-        }
-
-    cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
-
-    def cmd_QUERY_FILAMENT_SENSOR(self, gcmd):
-        if self.filament_present:
-            msg = "Spool filament sensor %s: filament detected" % self.name
-        else:
-            msg = "Spool filament sensor %s: filament not detected" % self.name
-        gcmd.respond_info(msg)
-
-    cmd_SET_FILAMENT_SENSOR_help = "Sets the filament sensor on/off"
-
-    def cmd_SET_FILAMENT_SENSOR(self, gcmd):
-        self.sensor_enabled = gcmd.get_int("ENABLE", 1)
+        return self.printer.load_object(config, section)
 
 
 def load_config_prefix(config):
