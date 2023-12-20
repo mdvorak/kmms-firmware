@@ -235,7 +235,7 @@ class KmmsSpool(object):
         # Notify user
         self.gcode.respond_info(
             "Timeout detected on spool %s during %s after %.1f s" % (
-            self.spool_str, self.last_status.lower(), self.timeout))
+                self.spool_str, self.last_status.lower(), self.timeout))
 
         # Fire event for other handlers
         self.printer.send_event('kmms:spool_timeout', eventtime, self.name)
