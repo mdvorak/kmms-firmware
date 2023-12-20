@@ -234,7 +234,8 @@ class KmmsSpool(object):
 
         # Notify user
         self.gcode.respond_info(
-            "Timeout detected on spool %s during %s after %.1f s" % (self.spool_str, self.last_status.lower(), self.timeout))
+            "Timeout detected on spool %s during %s after %.1f s" % (
+            self.spool_str, self.last_status.lower(), self.timeout))
 
         # Fire event for other handlers
         self.printer.send_event('kmms_spool:timeout', eventtime, self.name)
@@ -286,6 +287,16 @@ class KmmsSpool(object):
         if status != self.last_status:
             self.last_status = status
             self.printer.send_event('kmms_spool:status', self.reactor.monotonic(), self.name, status)
+
+    def _define_filament_switch(self, config, name, switch_pin):
+        section = "filament_switch_sensor %s" % name
+
+        config.fileconfig.add_section(section)
+        config.fileconfig.set(section, "switch_pin", switch_pin)
+        config.fileconfig.set(section, "pause_on_runout", "False")
+        config.fileconfig.set(section, "event_delay", 1.)
+
+        return self.printer.load_object(config, section)
 
     # Commands
 
@@ -354,16 +365,6 @@ class KmmsSpool(object):
             self.gcode.run_script(gcode)
         except Exception:
             logging.exception("Script running error")
-
-    def _define_filament_switch(self, config, name, switch_pin):
-        section = "filament_switch_sensor %s" % name
-
-        config.fileconfig.add_section(section)
-        config.fileconfig.set(section, "switch_pin", switch_pin)
-        config.fileconfig.set(section, "pause_on_runout", "False")
-        config.fileconfig.set(section, "event_delay", 1.)
-
-        return self.printer.load_object(config, section)
 
 
 def load_config_prefix(config):
