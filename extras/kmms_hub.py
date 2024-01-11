@@ -9,38 +9,41 @@ class KmmsHub(object):
     def __init__(self, config):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.gcode = self.printer.lookup_object('gcode')
         self.name = config.get_name().split()[-1]
 
-        filament_sensor_pins = config.getlist('filament_available_sensor_pins')
-        self.filament_available_sensor_names = list(self._filament_available_switch_name(i)
-                                                    for i in range(len(filament_sensor_pins)))
-        self.filament_available_sensor_switches = list(
+        filament_available_pins = config.getlist('filament_available_pins')
+        self.filament_available_names = list(self._filament_available_switch_name(i)
+                                             for i in range(len(filament_available_pins)))
+        self.filament_available_switches = list(
             self._define_filament_switch(config, name, pin) for name, pin in
-            zip(self.filament_available_sensor_names, filament_sensor_pins))
+            zip(self.filament_available_names, filament_available_pins))
 
-        self.filament_sensor_switch = self._define_filament_switch(config, self.name, config.get('filament_sensor_pin'))
+        self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_switch_pin'))
 
-        # Events
-        self.printer.register_event_handler("filament:insert", self._handle_insert)
-        self.printer.register_event_handler("filament:runout", self._handle_runout)
+        # Commands
+        self.gcode.register_mux_command("__KMMS_HUB_INSERT", "NAME", self.name,
+                                        self.cmd__KMMS_HUB_INSERT)
+        self.gcode.register_mux_command("__KMMS_HUB_RUNOUT", "NAME", self.name,
+                                        self.cmd__KMMS_HUB_RUNOUT)
 
     def _handle_insert(self, eventtime, name):
-        if name == self.filament_sensor_switch.name:
-            self.printer.send_event('kmms:hub_filament_insert', eventtime, self.name)
-        elif name in self.filament_available_sensor_names:
-            self.printer.send_event('kmms:hub_filament_available', eventtime, self.name, name.split('_')[-1])
+        if name == self.filament_switch.name:
+            self.printer.send_event('kmms:hub_insert', eventtime, self.name)
+        elif name in self.filament_available_names:
+            self.printer.send_event('kmms:hub_available', eventtime, self.name, name.split('_')[-1])
 
     def _handle_runout(self, eventtime, name):
-        if name == self.filament_sensor_switch.name:
-            self.printer.send_event('kmms:hub_filament_runout', eventtime, self.name)
-        elif name in self.filament_available_sensor_names:
-            self.printer.send_event('kmms:hub_filament_unavailable', eventtime, self.name, name.split('_')[-1])
+        if name == self.filament_switch.name:
+            self.printer.send_event('kmms:hub_runout', eventtime, self.name)
+        elif name in self.filament_available_names:
+            self.printer.send_event('kmms:hub_unavailable', eventtime, self.name, name.split('_')[-1])
 
     def get_status(self, eventtime):
         return {
-            'filament_present': self.filament_sensor_switch.get_status(eventtime)['filament_present'],
+            'filament_present': self.filament_switch.get_status(eventtime)['filament_present'],
             'filament_available': list(
-                fs.get_status(eventtime)['filament_present'] for fs in self.filament_available_sensor_switches),
+                fs.get_status(eventtime)['filament_present'] for fs in self.filament_available_switches),
         }
 
     def _filament_available_switch_name(self, index):
@@ -53,8 +56,19 @@ class KmmsHub(object):
         config.fileconfig.set(section, "switch_pin", switch_pin)
         config.fileconfig.set(section, "pause_on_runout", "False")
         config.fileconfig.set(section, "event_delay", 1.)
+        config.fileconfig.set(section, "run_always", "True")
+        config.fileconfig.set(section, "insert_gcode", "__KMMS_HUB_INSERT NAME=%s" % name)
+        config.fileconfig.set(section, "runout_gcode", "__KMMS_HUB_RUNOUT NAME=%s" % name)
 
         return self.printer.load_object(config, section)
+
+    def cmd__KMMS_HUB_INSERT(self, gcmd):
+        name = gcmd.get('NAME')
+        self.reactor.register_callback(lambda eventtime: self._handle_insert(eventtime, name))
+
+    def cmd__KMMS_HUB_RUNOUT(self, gcmd):
+        name = gcmd.get('NAME')
+        self.reactor.register_callback(lambda eventtime: self._handle_runout(eventtime, name))
 
 
 def load_config_prefix(config):

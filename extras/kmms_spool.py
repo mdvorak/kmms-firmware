@@ -76,38 +76,30 @@ class KmmsSpool(object):
         self._trigger_completion = None
         self._timeout_timer = None
 
-        self.printer.register_event_handler("filament:insert", self._handle_insert)
-        self.printer.register_event_handler("filament:runout", self._handle_runout)
-
         # Register commands
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
                                         self.cmd_SET_PIN,
                                         desc=self.cmd_SET_PIN_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_STOP", "SPOOL", self.name,
+        self.gcode.register_mux_command("KMMS_SPOOL_STOP", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_STOP,
                                         desc=self.cmd_KMMS_SPOOL_STOP_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_LOAD", "SPOOL", self.name,
+        self.gcode.register_mux_command("KMMS_SPOOL_LOAD", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_LOAD,
                                         desc=self.cmd_KMMS_SPOOL_LOAD_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_UNLOAD", "SPOOL", self.name,
+        self.gcode.register_mux_command("KMMS_SPOOL_UNLOAD", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_UNLOAD,
                                         desc=self.cmd_KMMS_SPOOL_UNLOAD_help)
 
+        self.gcode.register_mux_command("__KMMS_SPOOL_INSERT", "NAME", self.name,
+                                        self.cmd__KMMS_SPOOL_INSERT)
+        self.gcode.register_mux_command("__KMMS_SPOOL_RUNOUT", "NAME", self.name,
+                                        self.cmd__KMMS_SPOOL_RUNOUT)
+
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-
-    def _handle_insert(self, eventtime, name):
-        if name != self.name:
-            return
-        self.reactor.register_callback(self._insert_event_handler)
-
-    def _handle_runout(self, eventtime, name):
-        if name != self.name:
-            return
-        self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
         filament_status = self.filament_switch.get_status(eventtime)
@@ -241,15 +233,17 @@ class KmmsSpool(object):
         self.printer.send_event('kmms:spool_timeout', eventtime, self.name)
         return self.reactor.NEVER
 
-    def _insert_event_handler(self, eventtime):
+    def _handle_insert(self, eventtime):
         # Notify user
         self.gcode.respond_info("Filament detected on spool %s" % self.spool_str)
+        # Publish event
+        self.printer.send_event('kmms:spool_insert', eventtime, self.name)
 
         # Execute custom handler
-        insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
-        self._exec_gcode(insert_gcode)
+        # insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
+        # self._exec_gcode(insert_gcode)
 
-    def _runout_event_handler(self, eventtime):
+    def _handle_runout(self, eventtime):
         # First stop
         self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
@@ -262,9 +256,12 @@ class KmmsSpool(object):
             msg = "Runout detected on spool %s when %s" % (self.spool_str, self.last_status.lower())
         self.gcode.respond_info(msg)
 
+        # Publish event
+        self.printer.send_event('kmms:spool_runout', eventtime, self.name)
+
         # Execute custom handler
-        runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
-        self._exec_gcode(runout_gcode)
+        # runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
+        # self._exec_gcode(runout_gcode)
 
     def _resolve_state(self, result):
         self.set_pin(self.toolhead.print_time, 0.)
@@ -295,6 +292,9 @@ class KmmsSpool(object):
         config.fileconfig.set(section, "switch_pin", switch_pin)
         config.fileconfig.set(section, "pause_on_runout", "False")
         config.fileconfig.set(section, "event_delay", 1.)
+        config.fileconfig.set(section, "run_always", "True")
+        config.fileconfig.set(section, "insert_gcode", "__KMMS_SPOOL_INSERT NAME=%s" % name)
+        config.fileconfig.set(section, "runout_gcode", "__KMMS_SPOOL_RUNOUT NAME=%s" % name)
 
         return self.printer.load_object(config, section)
 
@@ -333,6 +333,12 @@ class KmmsSpool(object):
         self.toolhead.register_lookahead_callback(
             lambda print_time: self.load_spool(print_time, wait)
         )
+
+    def cmd__KMMS_SPOOL_INSERT(self, gcmd):
+        self.reactor.register_callback(self._handle_insert)
+
+    def cmd__KMMS_SPOOL_RUNOUT(self, gcmd):
+        self.reactor.register_callback(self._handle_runout)
 
     # Helpers
 
