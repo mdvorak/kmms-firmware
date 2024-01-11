@@ -291,7 +291,7 @@ class KmmsSpool(object):
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
         config.fileconfig.set(section, "pause_on_runout", "False")
-        config.fileconfig.set(section, "event_delay", 1.)
+        config.fileconfig.set(section, "event_delay", 0.1)
         config.fileconfig.set(section, "run_always", "True")
         config.fileconfig.set(section, "insert_gcode", "__KMMS_SPOOL_INSERT NAME=%s" % name)
         config.fileconfig.set(section, "runout_gcode", "__KMMS_SPOOL_RUNOUT NAME=%s" % name)
