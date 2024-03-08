@@ -3,6 +3,7 @@
 # Copyright (C) 2023-2024  Michal Dvorak <mikee2185@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import logging
 
 
 class KmmsHub(object):
@@ -12,6 +13,7 @@ class KmmsHub(object):
         self.gcode = self.printer.lookup_object('gcode')
         self.name = config.get_name().split()[-1]
 
+        # Read config
         available_switch_pins = config.getlist('available_switch_pins')
         self.available_switch_pin_names = [self._available_switch_name(i)
                                            for i in range(len(available_switch_pins))]
@@ -20,11 +22,23 @@ class KmmsHub(object):
 
         self.filament_switch = self._define_filament_switch_sensor(config, self.name, config.get('filament_switch_pin'))
 
+        self.encoder_name = config.get('encoder', '%s_encoder' % self.name)
+        self.encoder = None
+
         # Commands
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
         self.gcode.register_mux_command("__KMMS_HUB_INSERT", "HUB", self.name,
                                         self.cmd__KMMS_HUB_INSERT)
         self.gcode.register_mux_command("__KMMS_HUB_RUNOUT", "HUB", self.name,
                                         self.cmd__KMMS_HUB_RUNOUT)
+
+    def _handle_connect(self):
+        try:
+            self.encoder = self.printer.lookup_object(self.encoder_name)
+        except Exception:
+            # Not configured
+            logging.warning("Hub encoder %s not found", self.encoder_name)
 
     def _handle_insert(self, eventtime, name):
         if name == self.name:

@@ -26,13 +26,13 @@ class KmmsSpool(object):
         self.toolhead = None
         pins = self.printer.lookup_object('pins')
 
-        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
 
         self.name = config.get_name().split()[-1]
         self.spool_str = self.name.replace('spool_', '')
 
         # Filament Sensor
-        self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_sensor_pin'))
+        self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_switch_pin'))
 
         # Motor PWM
         self.load_pin = pins.setup_pin('pwm', config.get('load_pin'))
@@ -74,7 +74,7 @@ class KmmsSpool(object):
         self.last_status = self.STATUS_IDLE
         self.last_duration = self.last_start = None
         self._trigger_completion = None
-        self._timeout_timer = None
+        self._timeout_timer = self.reactor.register_timer(self._handle_timeout, self.reactor.NEVER)
 
         # Register commands
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
@@ -98,7 +98,7 @@ class KmmsSpool(object):
         self.gcode.register_mux_command("__KMMS_SPOOL_RUNOUT", "NAME", self.name,
                                         self.cmd__KMMS_SPOOL_RUNOUT)
 
-    def _handle_ready(self):
+    def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
 
     def get_status(self, eventtime):
@@ -188,10 +188,10 @@ class KmmsSpool(object):
             self.set_pin(print_time, self.load_power)
             # Timeout
             timeout_wake_time = eventtime + self.timeout
-            self._timeout_timer = self.reactor.register_timer(self._handle_timeout, timeout_wake_time)
+            self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
             # Wait
             if wait:
-                completion.wait(timeout_wake_time + 0.3)
+                completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
 
         return completion
 
@@ -212,10 +212,10 @@ class KmmsSpool(object):
             self.set_pin(print_time, -self.unload_power)
             # Timeout
             timeout_wake_time = eventtime + self.timeout
-            self._timeout_timer = self.reactor.register_timer(self._handle_timeout, timeout_wake_time)
+            self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
             # Wait
             if wait:
-                completion.wait(timeout_wake_time + 0.3)
+                completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
 
         return completion
 
@@ -266,10 +266,7 @@ class KmmsSpool(object):
     def _resolve_state(self, result):
         self.set_pin(self.toolhead.print_time, 0.)
 
-        timer = self._timeout_timer
-        self._timeout_timer = None
-        if timer is not None:
-            self.reactor.unregister_timer(timer)
+        self.reactor.update_timer(self._timeout_timer, self.reactor.NEVER)
 
         completion = self._trigger_completion
         self._trigger_completion = None
@@ -286,13 +283,13 @@ class KmmsSpool(object):
             self.printer.send_event('kmms_spool:status', self.reactor.monotonic(), self.name, status)
 
     def _define_filament_switch(self, config, name, switch_pin):
-        section = "filament_switch_sensor %s" % name
+        section = "kmms_filament_switch_sensor %s" % name
 
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
-        config.fileconfig.set(section, "pause_on_runout", "False")
+        config.fileconfig.set(section, "pause_on_runout", 0)
         config.fileconfig.set(section, "event_delay", 0.1)
-        config.fileconfig.set(section, "run_always", "True")
+        config.fileconfig.set(section, "run_always", 1)
         config.fileconfig.set(section, "insert_gcode", "__KMMS_SPOOL_INSERT NAME=%s" % name)
         config.fileconfig.set(section, "runout_gcode", "__KMMS_SPOOL_RUNOUT NAME=%s" % name)
 
