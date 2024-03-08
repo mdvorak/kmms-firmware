@@ -62,7 +62,6 @@ class MmuEncoder:
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None
-        self.filament_detected = False
         self.detection_mode = self.RUNOUT_STATIC
         self.last_extruder_pos = self.filament_runout_pos = 0.
 

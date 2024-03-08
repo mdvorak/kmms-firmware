@@ -13,9 +13,9 @@ class KmmsRunoutHelper:
         self.runout_pause = bool(config.getboolean('pause_on_runout', True))
         self.runout_gcode = self.insert_gcode = None
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        if config.get('runout_gcode', None) is not None:
+        if config.get('runout_gcode', None):
             self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode')
-        if config.get('insert_gcode', None) is not None:
+        if config.get('insert_gcode', None):
             self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode')
         self.run_always = config.getboolean('run_always', False)
         self.pause_delay = config.getfloat('pause_delay', .5, above=.0)  # Time to wait after pause
@@ -106,9 +106,9 @@ class KmmsRunoutHelper:
 
     def cmd_QUERY_FILAMENT_SENSOR(self, gcmd):
         if self.filament_present:
-            msg = "Filament Sensor %s: filament detected" % (self.name)
+            msg = "Filament Sensor %s: filament detected" % self.name
         else:
-            msg = "Filament Sensor %s: filament not detected" % (self.name)
+            msg = "Filament Sensor %s: filament not detected" % self.name
         gcmd.respond_info(msg)
 
     cmd_SET_FILAMENT_SENSOR_help = "Sets the filament sensor on/off"
@@ -143,7 +143,9 @@ def runout_helper_attach(obj, config):
 def load_config_prefix(config):
     config.get_printer().load_object(config, 'pause_resume')
 
+    # noinspection PyUnresolvedReferences
     import extras.filament_switch_sensor
+    # noinspection PyUnresolvedReferences
     obj = extras.filament_switch_sensor.SwitchSensor(config)
 
     return runout_helper_attach(obj, config)
