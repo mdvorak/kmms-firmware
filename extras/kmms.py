@@ -3,10 +3,12 @@
 # Copyright (C) 2023-2024  Michal Dvorak <mikee2185@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import logging
 
 
 class Kmms:
     def __init__(self, config):
+        self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.printer = config.get_printer()
 
         self.spools = []

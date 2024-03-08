@@ -8,6 +8,7 @@ import logging
 
 class Hub(object):
     def __init__(self, config):
+        self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
@@ -38,7 +39,7 @@ class Hub(object):
             self.encoder = self.printer.lookup_object(self.encoder_name)
         except Exception:
             # Not configured
-            logging.warning("Hub encoder %s not found", self.encoder_name)
+            self.logger.warning("Hub encoder %s not found", self.encoder_name)
 
     def _handle_insert(self, eventtime, name):
         if name == self.name:

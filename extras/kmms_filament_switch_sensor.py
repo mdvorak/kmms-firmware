@@ -3,6 +3,7 @@ import logging
 
 class CustomRunoutHelper:
     def __init__(self, config):
+        self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -61,7 +62,7 @@ class CustomRunoutHelper:
             if gcode:
                 self.gcode.run_script(gcode + "\nM400")
         except Exception:
-            logging.exception("Error running filament_switch_sensor %s handler" % self.name)
+            self.logger.exception("Error running filament_switch_sensor %s handler" % self.name)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -84,14 +85,14 @@ class CustomRunoutHelper:
             if self.run_always or not is_printing:
                 # insert detected
                 self.min_event_systime = self.reactor.NEVER
-                logging.info(
+                self.logger.info(
                     "Filament Sensor %s: insert event detected, Time %.2f" %
                     (self.name, eventtime))
                 self.reactor.register_callback(self._insert_event_handler)
         elif self.run_always or is_printing:
             # runout detected
             self.min_event_systime = self.reactor.NEVER
-            logging.info(
+            self.logger.info(
                 "Filament Sensor %s: runout event detected, Time %.2f" %
                 (self.name, eventtime))
             self.reactor.register_callback(self._runout_event_handler)
