@@ -35,7 +35,7 @@ class MmuEncoder:
         self._logger = None
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.KmmsRunoutHelper(config)
+        self.runout_helper = kmms_filament_switch_sensor.CustomRunoutHelper(config)
 
         # For counter functionality
         encoder_pin = config.get('encoder_pin')

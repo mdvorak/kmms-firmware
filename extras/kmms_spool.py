@@ -14,7 +14,7 @@ RESEND_HOST_TIME = 0.300 + PIN_MIN_TIME
 MAX_SCHEDULE_TIME = 5.0
 
 
-class KmmsSpool(object):
+class Spool(object):
     STATUS_IDLE = "Idle"
     STATUS_LOADING = "Loading"
     STATUS_UNLOADING = "Unloading"
@@ -371,4 +371,4 @@ class KmmsSpool(object):
 
 
 def load_config_prefix(config):
-    return KmmsSpool(config)
+    return Spool(config)

@@ -6,7 +6,7 @@
 import logging
 
 
-class KmmsHub(object):
+class Hub(object):
     def __init__(self, config):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -94,4 +94,4 @@ class KmmsHub(object):
 
 
 def load_config_prefix(config):
-    return KmmsHub(config)
+    return Hub(config)

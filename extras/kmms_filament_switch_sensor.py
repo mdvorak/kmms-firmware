@@ -1,7 +1,7 @@
 import logging
 
 
-class KmmsRunoutHelper:
+class CustomRunoutHelper:
     def __init__(self, config):
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
@@ -135,7 +135,7 @@ def _replace_mux_command(gcode, cmd, key, value, func, desc=None):
 
 
 def runout_helper_attach(obj, config):
-    obj.runout_helper = KmmsRunoutHelper(config)
+    obj.runout_helper = CustomRunoutHelper(config)
     obj.get_status = obj.runout_helper.get_status
     return obj
 
