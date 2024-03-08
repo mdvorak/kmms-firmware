@@ -20,6 +20,7 @@ class Spool(object):
     STATUS_UNLOADING = "Unloading"
 
     def __init__(self, config):
+        self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object('gcode')
         self.reactor = self.printer.get_reactor()
@@ -29,6 +30,7 @@ class Spool(object):
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
 
         self.name = config.get_name().split()[-1]
+
         self.spool_str = self.name.replace('spool_', '')
 
         # Filament Sensor
@@ -120,7 +122,7 @@ class Spool(object):
         print_time = max(print_time, self.last_print_time + PIN_MIN_TIME)
 
         if not is_resend:
-            self._log_debug("move cmd %.3f", value)
+            self.logger.debug("%.1f: move cmd %.3f", self.reactor.monotonic(), value)
 
         if value >= 0.:
             self._set_status(self.STATUS_LOADING if value > 0 else self.STATUS_IDLE)
@@ -145,7 +147,7 @@ class Spool(object):
             self._reset_state()
             return
 
-        self._log_info("stop and release")
+        self.logger.info("%.1f: stop and release", self.reactor.monotonic())
 
         prev_unloading = self.last_value < 0.
 
@@ -183,7 +185,7 @@ class Spool(object):
             self._resolve_state(None)
         else:
             # Load
-            self._log_info("loading")
+            self.logger.info("%.1f: loading", eventtime)
             self.last_start = eventtime
             self.set_pin(print_time, self.load_power)
             # Timeout
@@ -207,7 +209,7 @@ class Spool(object):
             self._resolve_state(None)
         else:
             # Unload
-            self._log_info("unloading")
+            self.logger.info("%.1f: unloading", eventtime)
             self.last_start = eventtime
             self.set_pin(print_time, -self.unload_power)
             # Timeout
@@ -221,7 +223,7 @@ class Spool(object):
 
     def _handle_timeout(self, eventtime):
         # Stop
-        self._log_info("timeout detected during operation")
+        self.logger.info("%.1f: timeout detected during operation", eventtime)
         self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
         # Notify user
@@ -338,15 +340,6 @@ class Spool(object):
         self.reactor.register_callback(self._handle_runout)
 
     # Helpers
-
-    def _log_info(self, msg, *args, **kwargs):
-        args = (self.reactor.monotonic(), self.name) + args
-        logging.info("KMMS %.6f: Spool %s " + msg, *args, **kwargs)
-
-    def _log_debug(self, msg, *args, **kwargs):
-        args = (self.reactor.monotonic(), self.name) + args
-        logging.debug("KMMS %.6f: Spool %s " + msg, *args, **kwargs)
-
     def _resend_current_val(self, eventtime):
         if self.last_value == 0.:
             self.reactor.unregister_timer(self.resend_timer)
@@ -367,7 +360,7 @@ class Spool(object):
         try:
             self.gcode.run_script(gcode)
         except Exception:
-            logging.exception("Script running error")
+            self.logger.exception("Script running error")
 
 
 def load_config_prefix(config):
