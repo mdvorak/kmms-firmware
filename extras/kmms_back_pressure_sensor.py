@@ -57,7 +57,8 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
         if abs(pressure - self.last_pressure) >= TOLERANCE:
             self.last_pressure = pressure
-            self.reactor.register_callback(self._pressure_event_handler)
+            if self.runout_helper.sensor_enabled:
+                self.reactor.register_callback(self._pressure_event_handler)
 
     def get_status(self, eventtime):
         return self.runout_helper.get_status(eventtime) | {
