@@ -1,5 +1,7 @@
 import logging
 
+import extras.filament_switch_sensor
+
 
 class CustomRunoutHelper:
     def __init__(self, config):
@@ -62,7 +64,7 @@ class CustomRunoutHelper:
             self.logger.debug('Sending event %s', event)
             self.printer.send_event(event, *params)
         except Exception:
-            self.logger.exception("Error handling filament_switch_sensor %s %s", self.name, event)
+            self.logger.exception("Error in %s event handler", event)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -138,9 +140,6 @@ def runout_helper_attach(obj, config):
 
 
 def load_config_prefix(config):
-    # noinspection PyUnresolvedReferences
-    import extras.filament_switch_sensor
-    # noinspection PyUnresolvedReferences
     obj = extras.filament_switch_sensor.SwitchSensor(config)
 
     return runout_helper_attach(obj, config)
