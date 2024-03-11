@@ -1,3 +1,10 @@
+# KMMS
+#
+# Based on https://github.com/moggieuk/Happy-Hare/blob/36435646f8eac82377ce1cf153c66aa2b79fbd0b/extras/mmu_sensors.py
+#
+# Copyright (C) 2024  Michal Dvorak <mikee2185@gmail.com>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
 import extras.filament_switch_sensor

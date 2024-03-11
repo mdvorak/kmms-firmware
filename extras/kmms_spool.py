@@ -1,12 +1,11 @@
-# KMMS spool config
+# KMMS
 #
 # Based on
 # https://github.com/Klipper3d/klipper/blob/3417940fd82adf621f429f42289d3693ee832582/klippy/extras/output_pin.py
 #
-# Copyright (C) 2023-2024  Michal Dvorak <mikee2185@gmail.com>
+# Copyright (C) 2024  Michal Dvorak <mikee2185@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-
 import logging
 
 PIN_MIN_TIME = 0.010

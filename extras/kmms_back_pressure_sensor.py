@@ -1,3 +1,8 @@
+# KMMS
+#
+# Copyright (C) 2024  Michal Dvorak <mikee2185@gmail.com>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
 import extras.filament_switch_sensor
