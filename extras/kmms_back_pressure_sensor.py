@@ -61,8 +61,10 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
     def get_status(self, eventtime):
         return self.runout_helper.get_status(eventtime) | {
-            'last_value': self.last_value,
-            'pressure': self.last_pressure
+            'min': round(self.min, 3),
+            'target': round(self.target, 3),
+            'last_value': round(self.last_value, 3),
+            'pressure': round(self.last_pressure, 3)
         }
 
     cmd_SET_BACK_PRESSURE_help = "Configure back-pressure sensor"
@@ -70,9 +72,11 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
     def cmd_SET_BACK_PRESSURE(self, gcmd):
         self.min = max(0, min(1, gcmd.get_float('MIN', self.min)))
         self.target = max(0, min(1, gcmd.get_float('TARGET', self.target)))
+        self.runout_helper.sensor_enabled = gcmd.get_int('ENABLE', self.runout_helper.sensor_enabled)
+        self.runout_helper.runout_pause = gcmd.get_int('PAUSE_ON_RUNOUT', self.runout_helper.runout_pause)
 
-        gcmd.respond_info("Back-pressure sensor %s: MIN=%.3f TARGET=%.3f LAST_VALUE=%.3f PRESSURE=%.3f" %
-                          (self.name, self.min, self.target, self.last_pressure, self.last_pressure))
+        status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(self.reactor.monotonic())]
+        gcmd.respond_info("Back-pressure sensor %s: %s" % (self.name, status))
 
 
 def load_config_prefix(config):
