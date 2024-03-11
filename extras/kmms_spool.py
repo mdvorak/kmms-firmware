@@ -73,8 +73,6 @@ class Spool(object):
 
         # Register commands and handlers
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
-        self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_runout)
-        self.printer.register_event_handler("kmms:filament_insert", self._handle_filament_insert)
 
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
                                         self.cmd_SET_PIN,
@@ -212,30 +210,6 @@ class Spool(object):
         # Fire event for other handlers
         self.printer.send_event('kmms:spool_timeout', eventtime, self.name)
         return self.reactor.NEVER
-
-    def _handle_filament_insert(self, eventtime, name):
-        if name == self.name:
-            # Notify user
-            self.gcode.respond_info("Filament detected on %s" % self.friendly_name)
-            # Publish event
-            self._exec_event('kmms:spool_insert', eventtime, self.name)
-
-    def _handle_filament_runout(self, eventtime, name):
-        if name == self.name:
-            # First stop
-            self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
-
-            # Notify user
-            if self.last_status == self.STATUS_UNLOADING:
-                msg = "Filament successfully unloaded to %s" % self.friendly_name
-                if self.last_start is not None:
-                    msg += " in %.1f s" % (eventtime - self.last_start)
-            else:
-                msg = "Runout detected on %s while %s" % (self.friendly_name, self.last_status.lower())
-            self.gcode.respond_info(msg)
-
-            # Publish event
-            self._exec_event('kmms:spool_runout', eventtime, self.name)
 
     def _exec_event(self, event, *params):
         try:
