@@ -22,26 +22,19 @@ class Spool(object):
     def __init__(self, config):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.printer = config.get_printer()
-        self.gcode = self.printer.lookup_object('gcode')
         self.reactor = self.printer.get_reactor()
-        self.toolhead = None
-        pins = self.printer.lookup_object('pins')
-
-        self.printer.register_event_handler("klippy:connect", self._handle_connect)
-
+        self.gcode = self.printer.lookup_object('gcode')
         self.name = config.get_name().split()[-1]
-
-        self.spool_str = self.name.replace('spool_', '')
-
-        # Filament Sensor
-        self.filament_switch = self._define_filament_switch(config, self.name, config.get('filament_switch_pin'))
+        self.friendly_name = self.name.replace('_', ' ')
+        self.toolhead = None
 
         # Motor PWM
-        self.load_pin = pins.setup_pin('pwm', config.get('load_pin'))
-        self.unload_pin = pins.setup_pin('pwm', config.get('unload_pin'))
+        ppins = self.printer.lookup_object('pins')
+        self.load_pin = ppins.setup_pin('pwm', config.get('load_pin'))
+        self.unload_pin = ppins.setup_pin('pwm', config.get('unload_pin'))
 
-        self.load_power = config.getfloat('load_power', 1., minval=0.01, maxval=1.)
-        self.unload_power = config.getfloat('unload_power', 1., minval=0.01, maxval=1.)
+        self.load_power = config.getfloat('load_power', 1., above=.0, maxval=1.)
+        self.unload_power = config.getfloat('unload_power', 1., above=.0, maxval=1.)
         self.timeout = config.getfloat('timeout', 15.0, minval=PIN_MIN_TIME, maxval=120)
         self.release_pulse = config.getfloat('release_pulse', 0.020,
                                              minval=PIN_MIN_TIME, maxval=MAX_SCHEDULE_TIME)
@@ -78,7 +71,11 @@ class Spool(object):
         self._trigger_completion = None
         self._timeout_timer = self.reactor.register_timer(self._handle_timeout, self.reactor.NEVER)
 
-        # Register commands
+        # Register commands and handlers
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+        self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_runout)
+        self.printer.register_event_handler("kmms:filament_insert", self._handle_filament_insert)
+
         self.gcode.register_mux_command("SET_PIN", "PIN", self.name,
                                         self.cmd_SET_PIN,
                                         desc=self.cmd_SET_PIN_help)
@@ -95,15 +92,12 @@ class Spool(object):
                                         self.cmd_KMMS_SPOOL_UNLOAD,
                                         desc=self.cmd_KMMS_SPOOL_UNLOAD_help)
 
-    def _handle_connect(self):
+    def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
 
     def get_status(self, eventtime):
-        filament_status = self.filament_switch.get_status(eventtime)
-
         return {
             'status': self.last_status,
-            'filament_detected': filament_status['filament_detected'],
             'value': self.last_value
         }
 
@@ -170,49 +164,39 @@ class Spool(object):
 
     def load_spool(self, print_time, wait=True):
         self._reset_state()
-        completion = self._trigger_completion = self.reactor.completion()
 
         eventtime = self.reactor.monotonic()
-        status = self.get_status(eventtime)
+        completion = self._trigger_completion = self.reactor.completion()
 
-        if not status['filament_detected']:
-            # No filament detected
-            self._resolve_state(None)
-        else:
-            # Load
-            self.logger.info("%.1f: Loading", eventtime)
-            self.last_start = eventtime
-            self.set_pin(print_time, self.load_power)
-            # Timeout
-            timeout_wake_time = eventtime + self.timeout
-            self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
-            # Wait
-            if wait:
-                completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
+        # Load
+        self.logger.info("%.1f: Loading", eventtime)
+        self.last_start = eventtime
+        self.set_pin(print_time, self.load_power)
+        # Timeout
+        timeout_wake_time = eventtime + self.timeout
+        self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
+        # Wait
+        if wait:
+            completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
 
         return completion
 
     def unload_spool(self, print_time, wait=True):
         self._reset_state()
-        completion = self._trigger_completion = self.reactor.completion()
 
         eventtime = self.reactor.monotonic()
-        status = self.get_status(eventtime)
+        completion = self._trigger_completion = self.reactor.completion()
 
-        if not status['filament_detected']:
-            # No filament detected
-            self._resolve_state(None)
-        else:
-            # Unload
-            self.logger.info("%.1f: Unloading", eventtime)
-            self.last_start = eventtime
-            self.set_pin(print_time, -self.unload_power)
-            # Timeout
-            timeout_wake_time = eventtime + self.timeout
-            self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
-            # Wait
-            if wait:
-                completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
+        # Unload
+        self.logger.info("%.1f: Unloading", eventtime)
+        self.last_start = eventtime
+        self.set_pin(print_time, -self.unload_power)
+        # Timeout
+        timeout_wake_time = eventtime + self.timeout
+        self.reactor.update_timer(self._timeout_timer, timeout_wake_time)
+        # Wait
+        if wait:
+            completion.wait(timeout_wake_time + 0.3)  # it should be always triggered before timeout is reached
 
         return completion
 
@@ -222,43 +206,43 @@ class Spool(object):
         self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
         # Notify user
-        self.gcode.respond_info(
-            "Timeout detected on spool %s during %s after %.1f s" % (
-                self.spool_str, self.last_status.lower(), self.timeout))
+        self.gcode.respond_info("Timeout detected on %s while %s after %.1f s" %
+                                (self.friendly_name, self.last_status.lower(), self.timeout))
 
         # Fire event for other handlers
         self.printer.send_event('kmms:spool_timeout', eventtime, self.name)
         return self.reactor.NEVER
 
-    def _handle_insert(self, eventtime):
-        # Notify user
-        self.gcode.respond_info("Filament detected on spool %s" % self.spool_str)
-        # Publish event
-        self.printer.send_event('kmms:spool_insert', eventtime, self.name)
+    def _handle_filament_insert(self, eventtime, name):
+        if name == self.name:
+            # Notify user
+            self.gcode.respond_info("Filament detected on %s" % self.friendly_name)
+            # Publish event
+            self._exec_event('kmms:spool_insert', eventtime, self.name)
 
-        # Execute custom handler
-        # insert_gcode = "__KMMS_SPOOL_FILAMENT_INSERT SPOOL=%s" % self.name
-        # self._exec_gcode(insert_gcode)
+    def _handle_filament_runout(self, eventtime, name):
+        if name == self.name:
+            # First stop
+            self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
-    def _handle_runout(self, eventtime):
-        # First stop
-        self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
+            # Notify user
+            if self.last_status == self.STATUS_UNLOADING:
+                msg = "Filament successfully unloaded to %s" % self.friendly_name
+                if self.last_start is not None:
+                    msg += " in %.1f s" % (eventtime - self.last_start)
+            else:
+                msg = "Runout detected on %s while %s" % (self.friendly_name, self.last_status.lower())
+            self.gcode.respond_info(msg)
 
-        # Notify user
-        if self.last_status == self.STATUS_UNLOADING:
-            msg = "Filament successfully unloaded to spool %s" % self.spool_str
-            if self.last_start is not None:
-                msg += " in %.1f s" % (eventtime - self.last_start)
-        else:
-            msg = "Runout detected on spool %s when %s" % (self.spool_str, self.last_status.lower())
-        self.gcode.respond_info(msg)
+            # Publish event
+            self._exec_event('kmms:spool_runout', eventtime, self.name)
 
-        # Publish event
-        self.printer.send_event('kmms:spool_runout', eventtime, self.name)
-
-        # Execute custom handler
-        # runout_gcode = "__KMMS_SPOOL_FILAMENT_RUNOUT SPOOL=%s" % self.name
-        # self._exec_gcode(runout_gcode)
+    def _exec_event(self, event, *params):
+        try:
+            self.logger.debug('Sending event %s', event)
+            self.printer.send_event(event, *params)
+        except Exception:
+            self.logger.exception("Error in %s event handler", event)
 
     def _resolve_state(self, result):
         self.set_pin(self.toolhead.print_time, 0.)
@@ -278,19 +262,6 @@ class Spool(object):
         if status != self.last_status:
             self.last_status = status
             self.printer.send_event('kmms_spool:status', self.reactor.monotonic(), self.name, status)
-
-    def _define_filament_switch(self, config, name, switch_pin):
-        section = "kmms_filament_switch_sensor %s" % name
-
-        config.fileconfig.add_section(section)
-        config.fileconfig.set(section, "switch_pin", switch_pin)
-        config.fileconfig.set(section, "pause_on_runout", 0)
-        config.fileconfig.set(section, "event_delay", 0.1)
-        config.fileconfig.set(section, "run_always", 1)
-
-        return self.printer.load_object(config, section)
-
-    # Commands
 
     cmd_SET_PIN_help = ("Control of the motor, use negative value to unload. "
                         "Low-level command, doesn't do any sanity checks.")
