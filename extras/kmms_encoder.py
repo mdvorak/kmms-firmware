@@ -1,8 +1,9 @@
 # Happy Hare MMU Software
 # Driver for encoder that supports movement measurement, runout/clog detection and flow rate calc
 #
-# Copyright (C) 2022  moggieuk#6538 (discord)
+# Copyright (C) 2024  moggieuk#6538 (discord)
 #                     moggieuk@hotmail.com
+#                     mikee2185@gmail.com
 #
 # Based on:
 # Original Enraged Rabbit Carrot Feeder Project  Copyright (C) 2021  Ette
@@ -15,12 +16,14 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, time
-from . import pulse_counter
+import logging
+
 from . import kmms_filament_switch_sensor
+from . import pulse_counter
 
 
-class MmuEncoder:
+# Original name was MmuEncoder
+class Encoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
 
     RUNOUT_DISABLED = 0
@@ -32,7 +35,6 @@ class MmuEncoder:
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.gcode = self.printer.lookup_object('gcode')
 
         # Runout handler
         self.runout_helper = kmms_filament_switch_sensor.CustomRunoutHelper(config)
@@ -41,8 +43,7 @@ class MmuEncoder:
         encoder_pin = config.get('encoder_pin')
         self.sample_time = config.getfloat('sample_time', 0.1, above=0.)
         self.poll_time = config.getfloat('poll_time', 0.001, above=0.)
-        self.set_resolution(
-            config.getfloat('encoder_resolution', 1., above=0.))  # Must be calibrated by user in Happy Hare
+        self.resolution = config.getfloat('encoder_resolution', 1., above=0.)  # Must be calibrated by the user
         self._last_time = None
         self._counts = self._last_count = 0
         self._counter = pulse_counter.MCU_counter(self.printer, encoder_pin, self.sample_time, self.poll_time)
@@ -247,19 +248,16 @@ class MmuEncoder:
         self._counts = 0
 
     def get_status(self, eventtime):
-        return {
+        return self.runout_helper.get_status(eventtime) | {
             'encoder_pos': round(self.get_distance(), 1),
             'detection_length': round(self.detection_length, 1),
             'min_headroom': round(self.min_headroom, 1),
             'headroom': round(self.filament_runout_pos - self.last_extruder_pos, 1),
             'desired_headroom': round(self.desired_headroom, 1),
             'detection_mode': self.detection_mode,
-            "filament_detected": bool(self.runout_helper.filament_present),
-            'enabled': bool(self.runout_helper.sensor_enabled),
-            "runout_pause": bool(self.runout_helper.runout_pause),
             'flow_rate': int(round(min(self.extrusion_flowrate, 1.) * 100))
         }
 
 
 def load_config_prefix(config):
-    return MmuEncoder(config)
+    return Encoder(config)

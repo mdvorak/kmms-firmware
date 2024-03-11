@@ -9,18 +9,18 @@ class CustomRunoutHelper:
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         self.printer.load_object(config, 'pause_resume')
+        self.toolhead = None
 
         # Read config
         self.runout_pause = bool(config.getboolean('pause_on_runout', True))
-        self.runout_gcode = self.insert_gcode = None
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        if config.get('runout_gcode', None):
-            self.runout_gcode = gcode_macro.load_template(config, 'runout_gcode')
-        if config.get('insert_gcode', None):
-            self.insert_gcode = gcode_macro.load_template(config, 'insert_gcode')
         self.run_always = config.getboolean('run_always', False)
         self.pause_delay = config.getfloat('pause_delay', .5, above=.0)  # Time to wait after pause
         self.event_delay = config.getfloat('event_delay', 3., above=0.)  # Time between generated events
+
+        if config.get('runout_gcode', None):
+            self.logger.warning('runout_gcode is not used, but it is not empty')
+        if config.get('insert_gcode', None):
+            self.logger.warning('insert_gcode is not used, but it is not empty')
 
         # Internal state
         self.min_event_systime = self.reactor.NEVER
@@ -40,29 +40,29 @@ class CustomRunoutHelper:
                              self.cmd_SET_PAUSE_ON_RUNOUT, desc=self.cmd_SET_PAUSE_ON_RUNOUT_help)
 
     def _handle_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
         self.min_event_systime = self.reactor.monotonic() + 2.  # Time to wait before first events are processed
 
     def _runout_event_handler(self, eventtime):
         # Pausing from inside an event requires that the pause portion
-        # of pause_resume execute immediately.
-        pause_prefix = ""
+        # of pause_resume is executed immediately.
         if self.runout_pause:
             pause_resume = self.printer.lookup_object('pause_resume')
             pause_resume.send_pause_command()
-            pause_prefix = "PAUSE\n"
             self.printer.get_reactor().pause(eventtime + self.pause_delay)
-        self._exec_gcode(pause_prefix, self.runout_gcode)
+
+        self._exec_event('kmms:filament_runout', self.name)
+        self.toolhead.wait_moves()
 
     def _insert_event_handler(self, eventtime):
-        self._exec_gcode("", self.insert_gcode)
+        self._exec_event('kmms:filament_insert', self.name)
 
-    def _exec_gcode(self, prefix, template):
+    def _exec_event(self, event, *params):
         try:
-            gcode = prefix + (template.render() if template is not None else '')
-            if gcode:
-                self.gcode.run_script(gcode + "\nM400")
+            self.logger.debug('Sending event %s', event)
+            self.printer.send_event(event, *params)
         except Exception:
-            self.logger.exception("Error running filament_switch_sensor %s handler" % self.name)
+            self.logger.exception("Error handling filament_switch_sensor %s %s", self.name, event)
         self.min_event_systime = self.reactor.monotonic() + self.event_delay
 
     def note_filament_present(self, is_filament_present):
@@ -85,23 +85,19 @@ class CustomRunoutHelper:
             if self.run_always or not is_printing:
                 # insert detected
                 self.min_event_systime = self.reactor.NEVER
-                self.logger.info(
-                    "Filament Sensor %s: insert event detected, Time %.2f" %
-                    (self.name, eventtime))
+                self.logger.info("Filament Sensor %s: insert event detected, Time %.2f", self.name, eventtime)
                 self.reactor.register_callback(self._insert_event_handler)
         elif self.run_always or is_printing:
             # runout detected
             self.min_event_systime = self.reactor.NEVER
-            self.logger.info(
-                "Filament Sensor %s: runout event detected, Time %.2f" %
-                (self.name, eventtime))
+            self.logger.info("Filament Sensor %s: runout event detected, Time %.2f", self.name, eventtime)
             self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
         return {
-            "filament_detected": bool(self.filament_present),
-            "enabled": bool(self.sensor_enabled),
-            "runout_pause": bool(self.runout_pause)}
+            'filament_detected': bool(self.filament_present),
+            'enabled': bool(self.sensor_enabled),
+            'runout_pause': bool(self.runout_pause)}
 
     cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
 
@@ -142,8 +138,6 @@ def runout_helper_attach(obj, config):
 
 
 def load_config_prefix(config):
-    config.get_printer().load_object(config, 'pause_resume')
-
     # noinspection PyUnresolvedReferences
     import extras.filament_switch_sensor
     # noinspection PyUnresolvedReferences
