@@ -14,8 +14,7 @@ class CustomRunoutHelper:
         self.toolhead = None
 
         # Read config
-        self.runout_pause = bool(config.getboolean('pause_on_runout', True))
-        self.run_always = config.getboolean('run_always', False)
+        self.runout_pause = bool(config.getboolean('pause_on_runout', False))  # Built-in has default set to True
         self.pause_delay = config.getfloat('pause_delay', .5, above=.0)  # Time to wait after pause
         self.event_delay = config.getfloat('event_delay', 3., above=0.)  # Time between generated events
 
@@ -79,17 +78,13 @@ class CustomRunoutHelper:
             # when the sensor is disabled
             return
 
-        # Determine "printing" status
-        idle_timeout = self.printer.lookup_object("idle_timeout")
-        is_printing = idle_timeout.get_status(eventtime)["state"] == "Printing"
         # Perform filament action associated with status change (if any)
         if is_filament_present:
-            if self.run_always or not is_printing:
-                # insert detected
-                self.min_event_systime = self.reactor.NEVER
-                self.logger.info("Filament Sensor %s: insert event detected, Time %.2f", self.name, eventtime)
-                self.reactor.register_callback(self._insert_event_handler)
-        elif self.run_always or is_printing:
+            # insert detected
+            self.min_event_systime = self.reactor.NEVER
+            self.logger.info("Filament Sensor %s: insert event detected, Time %.2f", self.name, eventtime)
+            self.reactor.register_callback(self._insert_event_handler)
+        else:
             # runout detected
             self.min_event_systime = self.reactor.NEVER
             self.logger.info("Filament Sensor %s: runout event detected, Time %.2f", self.name, eventtime)

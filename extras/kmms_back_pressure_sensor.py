@@ -23,8 +23,8 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.runout_helper = kmms_filament_switch_sensor.CustomRunoutHelper(config)
 
         # Read config
-        self.min = max(0, min(1, config.getfloat('min')))
-        self.target = max(0, min(1, config.getfloat('target')))
+        self.min = config.getfloat('min', minval=0, maxval=1)
+        self.target = config.getfloat('target', minval=0, maxval=1)
         self.last_value = self.last_pressure = .0
 
         ppins = self.printer.lookup_object('pins')
