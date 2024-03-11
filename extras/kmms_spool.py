@@ -83,22 +83,17 @@ class Spool(object):
                                         self.cmd_SET_PIN,
                                         desc=self.cmd_SET_PIN_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_STOP", "NAME", self.name,
+        self.gcode.register_mux_command("_KMMS_SPOOL_STOP", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_STOP,
                                         desc=self.cmd_KMMS_SPOOL_STOP_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_LOAD", "NAME", self.name,
+        self.gcode.register_mux_command("_KMMS_SPOOL_LOAD", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_LOAD,
                                         desc=self.cmd_KMMS_SPOOL_LOAD_help)
 
-        self.gcode.register_mux_command("KMMS_SPOOL_UNLOAD", "NAME", self.name,
+        self.gcode.register_mux_command("_KMMS_SPOOL_UNLOAD", "NAME", self.name,
                                         self.cmd_KMMS_SPOOL_UNLOAD,
                                         desc=self.cmd_KMMS_SPOOL_UNLOAD_help)
-
-        self.gcode.register_mux_command("__KMMS_SPOOL_INSERT", "NAME", self.name,
-                                        self.cmd__KMMS_SPOOL_INSERT)
-        self.gcode.register_mux_command("__KMMS_SPOOL_RUNOUT", "NAME", self.name,
-                                        self.cmd__KMMS_SPOOL_RUNOUT)
 
     def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -122,7 +117,7 @@ class Spool(object):
         print_time = max(print_time, self.last_print_time + PIN_MIN_TIME)
 
         if not is_resend:
-            self.logger.debug("%.1f: move cmd %.3f", self.reactor.monotonic(), value)
+            self.logger.debug("%.1f: Move cmd %.3f", self.reactor.monotonic(), value)
 
         if value >= 0.:
             self._set_status(self.STATUS_LOADING if value > 0 else self.STATUS_IDLE)
@@ -147,7 +142,7 @@ class Spool(object):
             self._reset_state()
             return
 
-        self.logger.info("%.1f: stop and release", self.reactor.monotonic())
+        self.logger.info("%.1f: Stop and release", self.reactor.monotonic())
 
         prev_unloading = self.last_value < 0.
 
@@ -185,7 +180,7 @@ class Spool(object):
             self._resolve_state(None)
         else:
             # Load
-            self.logger.info("%.1f: loading", eventtime)
+            self.logger.info("%.1f: Loading", eventtime)
             self.last_start = eventtime
             self.set_pin(print_time, self.load_power)
             # Timeout
@@ -209,7 +204,7 @@ class Spool(object):
             self._resolve_state(None)
         else:
             # Unload
-            self.logger.info("%.1f: unloading", eventtime)
+            self.logger.info("%.1f: Unloading", eventtime)
             self.last_start = eventtime
             self.set_pin(print_time, -self.unload_power)
             # Timeout
@@ -223,7 +218,7 @@ class Spool(object):
 
     def _handle_timeout(self, eventtime):
         # Stop
-        self.logger.info("%.1f: timeout detected during operation", eventtime)
+        self.logger.info("%.1f: Timeout detected during operation", eventtime)
         self.toolhead.register_lookahead_callback(lambda print_time: self.stop())
 
         # Notify user
@@ -292,8 +287,6 @@ class Spool(object):
         config.fileconfig.set(section, "pause_on_runout", 0)
         config.fileconfig.set(section, "event_delay", 0.1)
         config.fileconfig.set(section, "run_always", 1)
-        config.fileconfig.set(section, "insert_gcode", "__KMMS_SPOOL_INSERT NAME=%s" % name)
-        config.fileconfig.set(section, "runout_gcode", "__KMMS_SPOOL_RUNOUT NAME=%s" % name)
 
         return self.printer.load_object(config, section)
 
@@ -333,12 +326,6 @@ class Spool(object):
             lambda print_time: self.load_spool(print_time, wait)
         )
 
-    def cmd__KMMS_SPOOL_INSERT(self, gcmd):
-        self.reactor.register_callback(self._handle_insert)
-
-    def cmd__KMMS_SPOOL_RUNOUT(self, gcmd):
-        self.reactor.register_callback(self._handle_runout)
-
     # Helpers
     def _resend_current_val(self, eventtime):
         if self.last_value == 0.:
@@ -355,12 +342,6 @@ class Spool(object):
         self.set_pin(print_time + PIN_MIN_TIME,
                      self.last_value, self.last_cycle_time, True)
         return systime + self.resend_interval
-
-    def _exec_gcode(self, gcode):
-        try:
-            self.gcode.run_script(gcode)
-        except Exception:
-            self.logger.exception("Script running error")
 
 
 def load_config_prefix(config):

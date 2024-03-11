@@ -126,10 +126,12 @@ class Encoder:
                 self.min_headroom = self.filament_runout_pos - extruder_pos
                 if self.min_headroom < self.desired_headroom:
                     if self.detection_mode == self.RUNOUT_AUTOMATIC:
-                        self.logger.info("Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm" % (
-                            self.desired_headroom, self.min_headroom))
+                        self.logger.info(
+                            "%.1f: Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm",
+                            eventtime, self.desired_headroom, self.min_headroom)
                     elif self.detection_mode == self.RUNOUT_STATIC:
-                        self.logger.info("Warning: Only %.1fmm of headroom to clog/runout" % self.min_headroom)
+                        self.logger.info("%.1f: Warning: Only %.1fmm of headroom to clog/runout",
+                                         eventtime, self.min_headroom)
             self.runout_helper.note_filament_present(extruder_pos < self.filament_runout_pos)
 
             # Flow-rate calc. Depends on a calibration accuracy of the encoder
@@ -159,27 +161,33 @@ class Encoder:
             return
         if self.detection_mode != self.RUNOUT_AUTOMATIC:
             return
+
         current_detection_length = self.detection_length
+        eventtime = self.reactor.monotonic()
+
         if self.min_headroom < self.desired_headroom:
             # Maintain headroom
             extra_length = min((self.desired_headroom - self.min_headroom), self.desired_headroom)
             self.detection_length += extra_length
             self.logger.info(
-                "Automatic clog detection: maintaining headroom by adding %.1fmm to detection_length" % extra_length)
+                "%.1f: Automatic clog detection: maintaining headroom by adding %.1fmm to detection_length",
+                eventtime, extra_length)
         elif not increase_only:
             # Average down
             sample = self.detection_length - (self.min_headroom - self.desired_headroom)
-            self.detection_length = ((
-                                             self.average_samples * self.detection_length) + self.desired_headroom - self.min_headroom) / self.average_samples
+            self.detection_length = ((self.average_samples * self.detection_length) +
+                                     self.desired_headroom - self.min_headroom) / self.average_samples
             self.logger.info(
-                "Automatic clog detection: averaging down detection_length with new %.1fmm measurement" % sample)
+                "%.1f: Automatic clog detection: averaging down detection_length with new %.1fmm measurement",
+                eventtime, sample)
         else:
             return
 
         self.min_headroom = self.detection_length
         self.filament_runout_pos = self.last_extruder_pos + self.detection_length
         if round(self.detection_length, 1) != round(current_detection_length, 1):  # Persist if significant
-            self.logger.info("Automatic clog detection: reset detection_length to %.1fmm" % self.min_headroom)
+            self.logger.info("%.1f: Automatic clog detection: reset detection_length to %.1fmm",
+                             eventtime, self.min_headroom)
             self.set_clog_detection_length(self.detection_length)
 
     def get_clog_detection_length(self):
@@ -203,9 +211,6 @@ class Encoder:
             raise self.printer.config.error("Extruder named `%s` not found" % extruder_name)
         self.extruder_name = extruder_name
         self.filament_runout_pos = self.min_headroom = self.detection_length
-
-    def set_logger(self, log):
-        self.logger = log
 
     def _record(self, encoder_pos, extruder_pos):
         self.samples.append((encoder_pos, extruder_pos))
