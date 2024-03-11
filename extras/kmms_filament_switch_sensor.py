@@ -52,11 +52,11 @@ class CustomRunoutHelper:
             pause_resume.send_pause_command()
             self.printer.get_reactor().pause(eventtime + self.pause_delay)
 
-        self._exec_event('kmms:filament_runout', self.name)
+        self._exec_event('kmms:filament_runout', eventtime, self.name)
         self.toolhead.wait_moves()
 
     def _insert_event_handler(self, eventtime):
-        self._exec_event('kmms:filament_insert', self.name)
+        self._exec_event('kmms:filament_insert', eventtime, self.name)
 
     def _exec_event(self, event, *params):
         try:

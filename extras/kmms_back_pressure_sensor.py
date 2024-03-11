@@ -37,7 +37,7 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
                                         self.cmd_SET_BACK_PRESSURE, desc=self.cmd_SET_BACK_PRESSURE_help)
 
     def _pressure_event_handler(self, eventtime):
-        self._exec_event('kmms:backpressure', self.name, self.last_pressure)
+        self._exec_event('kmms:backpressure', eventtime, self.name, self.last_pressure)
 
     def _exec_event(self, event, *params):
         try:
