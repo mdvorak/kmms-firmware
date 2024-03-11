@@ -38,8 +38,8 @@ class CustomRunoutHelper:
                              self.cmd_QUERY_FILAMENT_SENSOR, desc=self.cmd_QUERY_FILAMENT_SENSOR_help)
 
         _replace_mux_command(self.gcode,
-                             "SET_PAUSE_ON_RUNOUT", "SENSOR", self.name,
-                             self.cmd_SET_PAUSE_ON_RUNOUT, desc=self.cmd_SET_PAUSE_ON_RUNOUT_help)
+                             "SET_FILAMENT_SENSOR", "SENSOR", self.name,
+                             self.cmd_SET_FILAMENT_SENSOR, desc=self.cmd_SET_FILAMENT_SENSOR_help)
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -99,7 +99,7 @@ class CustomRunoutHelper:
         return {
             'filament_detected': bool(self.filament_present),
             'enabled': bool(self.sensor_enabled),
-            'runout_pause': bool(self.runout_pause)}
+            'pause_on_runout': bool(self.runout_pause)}
 
     cmd_QUERY_FILAMENT_SENSOR_help = "Query the status of the Filament Sensor"
 
@@ -114,11 +114,7 @@ class CustomRunoutHelper:
 
     def cmd_SET_FILAMENT_SENSOR(self, gcmd):
         self.sensor_enabled = gcmd.get_int("ENABLE", 1)
-
-    cmd_SET_PAUSE_ON_RUNOUT_help = "Sets the pause on runout on/off"
-
-    def cmd_SET_PAUSE_ON_RUNOUT(self, gcmd):
-        self.runout_pause = gcmd.get_int("ENABLE", 1)
+        self.runout_pause = gcmd.get_int("PAUSE_ON_RUNOUT", self.runout_pause)
 
 
 def _replace_mux_command(gcode, cmd, key, value, func, desc=None):
