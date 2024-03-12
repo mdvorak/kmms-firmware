@@ -24,7 +24,6 @@ class KmmsExtruder:
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
         self.last_position = 0.
-        self.prev_extruder = None
 
         ffi_main, ffi_lib = chelper.get_ffi()
         self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
@@ -33,6 +32,10 @@ class KmmsExtruder:
 
         # Event handlers
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
+        gcode = self.printer.lookup_object('gcode')
+        gcode.register_mux_command("ACTIVATE_EXTRUDER", "EXTRUDER",
+                                   self.full_name, self.cmd_ACTIVATE_EXTRUDER, desc=self.cmd_ACTIVATE_EXTRUDER_help)
 
     def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -53,7 +56,7 @@ class KmmsExtruder:
         self.toolhead.flush_step_generation()
 
         if self.toolhead.get_extruder() is self:
-            raise self.printer.command_error("Cannot set sync while this extruder is active")
+            raise self.printer.command_error("Cannot set sync while '%s' is active" % self.full_name)
 
         if not extruder_name:
             self._configure_extruder_stepper(None, 0.)
@@ -66,9 +69,6 @@ class KmmsExtruder:
         self.logger.info("Syncing to extruder %s", extruder_name)
         self._configure_extruder_stepper(extruder.get_trapq(), extruder.last_position, motion_queue=extruder_name)
 
-    def is_active(self):
-        return self.toolhead.get_extruder() is self
-
     def activate(self):
         if self.toolhead.get_extruder() is self:
             self.logger.info("Extruder already active")
@@ -78,21 +78,7 @@ class KmmsExtruder:
 
         self.toolhead.flush_step_generation()
         self._configure_extruder_stepper(self.trapq, self.last_position)
-        self.prev_extruder = self.toolhead.get_extruder()
         self.toolhead.set_extruder(self, self.last_position)
-        self.printer.send_event("extruder:activate_extruder")
-
-    def deactivate(self):
-        if self.toolhead.get_extruder() is self:
-            self.logger.debug("Extruder is not active")
-            return
-
-        self.logger.info("Deactivating extruder")
-
-        self.toolhead.flush_step_generation()
-        self.toolhead.set_extruder(self.prev_extruder, self.prev_extruder.last_position)
-        self.prev_extruder = None
-        self._configure_extruder_stepper(None, 0.)
         self.printer.send_event("extruder:activate_extruder")
 
     def set_last_position(self, pos):
@@ -103,7 +89,7 @@ class KmmsExtruder:
 
     def check_move(self, move):
         if move.axes_d[0] or move.axes_d[1] or move.axes_d[2]:
-            raise self.printer.command_error("extruder_stepper %s cannot be used in conjunction with other movements")
+            raise self.printer.command_error("'%s' cannot be used in conjunction with other movements" % self.full_name)
 
         move.limit_speed(self.max_velocity, self.max_accel)
 
@@ -112,7 +98,7 @@ class KmmsExtruder:
         accel = move.accel * axis_r
         start_v = move.start_v * axis_r
         cruise_v = move.cruise_v * axis_r
-        can_pressure_advance = False # PA is not supported, since we do only standalone movements
+        can_pressure_advance = False  # PA is not supported, since we do only standalone movements
         # Queue movement (x is extruder movement, y is pressure advance flag)
         self.trapq_append(self.trapq, print_time,
                           move.accel_t, move.cruise_t, move.decel_t,
@@ -131,7 +117,7 @@ class KmmsExtruder:
         return self.name
 
     def get_heater(self):
-        raise self.printer.command_error("KMMS Extruder does not have a heater")
+        raise self.printer.command_error("'%s' does not have a heater" % self.full_name)
 
     def get_trapq(self):
         return self.trapq
@@ -140,3 +126,8 @@ class KmmsExtruder:
         return self.extruder_stepper.get_status(eventtime) | {
             'can_extrude': True
         }
+
+    cmd_ACTIVATE_EXTRUDER_help = "Change the active extruder"
+
+    def cmd_ACTIVATE_EXTRUDER(self, gcmd):
+        self.activate()
