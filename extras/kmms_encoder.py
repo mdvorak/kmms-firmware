@@ -17,8 +17,10 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
+from configfile import ConfigWrapper
+
 from . import kmms_filament_switch_sensor
-from . import pulse_counter
+from extras import pulse_counter
 
 
 # Original name was MmuEncoder
@@ -29,8 +31,9 @@ class Encoder:
     RUNOUT_STATIC = 1
     RUNOUT_AUTOMATIC = 2
 
-    def __init__(self, config):
+    def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
+        self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()

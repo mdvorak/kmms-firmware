@@ -8,6 +8,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
+from configfile import ConfigWrapper
+
 PIN_MIN_TIME = 0.010
 RESEND_HOST_TIME = 0.300 + PIN_MIN_TIME
 MAX_SCHEDULE_TIME = 5.0
@@ -18,13 +20,14 @@ class Spool(object):
     STATUS_LOADING = "Loading"
     STATUS_UNLOADING = "Unloading"
 
-    def __init__(self, config):
+    def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
+        self.full_name = config.get_name()
+        self.name = config.get_name().split()[-1]
+        self.friendly_name = self.name.replace('_', ' ')
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
-        self.name = config.get_name().split()[-1]
-        self.friendly_name = self.name.replace('_', ' ')
         self.toolhead = None
 
         # Motor PWM

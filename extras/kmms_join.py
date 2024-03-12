@@ -5,14 +5,17 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
+from configfile import ConfigWrapper
 
-class Hub(object):
-    def __init__(self, config):
+
+class Join(object):
+    def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
+        self.full_name = config.get_name()
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
-        self.name = config.get_name().split()[-1]
 
         # Read config
         self.filament_switch = self._define_filament_switch_sensor(config, self.name, config.get('filament_switch_pin'))
@@ -50,4 +53,4 @@ class Hub(object):
 
 
 def load_config_prefix(config):
-    return Hub(config)
+    return Join(config)

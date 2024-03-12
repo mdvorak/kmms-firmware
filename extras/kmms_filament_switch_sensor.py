@@ -8,11 +8,13 @@
 import logging
 
 import extras.filament_switch_sensor
+from configfile import ConfigWrapper
 
 
 class CustomRunoutHelper:
-    def __init__(self, config):
+    def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
+        self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -134,6 +136,8 @@ def _replace_mux_command(gcode, cmd, key, value, func, desc=None):
 def runout_helper_attach(obj, config):
     obj.runout_helper = CustomRunoutHelper(config)
     obj.get_status = obj.runout_helper.get_status
+    obj.full_name = obj.runout_helper.full_name
+    obj.name = obj.runout_helper.name
     return obj
 
 
