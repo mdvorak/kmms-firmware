@@ -2,7 +2,7 @@ import logging
 
 import chelper
 from configfile import ConfigWrapper
-from kinematics.extruder import ExtruderStepper, PrinterExtruder, DummyExtruder
+from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from klippy import Printer
 from toolhead import ToolHead
 

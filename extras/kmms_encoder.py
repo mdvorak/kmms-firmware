@@ -153,7 +153,8 @@ class Encoder:
         self.flowrate_last_encoder_pos = self.get_distance()
         self.extrusion_flowrate = 0.
         self.samples = []
-        self.filament_runout_pos = self.last_extruder_pos + self.detection_length + self.desired_headroom  # Add headroom to decrease sensitivity on startup
+        self.filament_runout_pos = (self.last_extruder_pos + self.detection_length +
+                                    self.desired_headroom)  # Add headroom to decrease sensitivity on startup
         self.next_calibration_point = self.last_extruder_pos + self.calibration_length
         self.min_headroom = self.detection_length
 
