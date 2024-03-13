@@ -29,6 +29,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
         # Runout handler
         self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "back_pressure_%s" % self.name)
+        self.min_event_systime = self.reactor.NEVER
 
         # Read config
         self.min = config.getfloat('min', minval=0, maxval=1)
@@ -38,7 +39,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         ppins = self.printer.lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
         self.mcu_adc.setup_minmax(ADC_SAMPLE_TIME, ADC_SAMPLE_COUNT)
-        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, None)
+        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, self.adc_callback)
 
         # Register events and commands
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -47,7 +48,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
                                         self.cmd_SET_BACK_PRESSURE, desc=self.cmd_SET_BACK_PRESSURE_help)
 
     def _handle_ready(self):
-        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, self.adc_callback)
+        self.min_event_systime = self.reactor.monotonic() + 2.
 
     def _pressure_event_handler(self, eventtime):
         self._exec_event('kmms:backpressure', eventtime, self.full_name, self.last_pressure)
@@ -58,6 +59,8 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
     def adc_callback(self, read_time, read_value):
         eventtime = self.mcu_adc.get_mcu().print_time_to_clock(read_time)
+        if eventtime < self.min_event_systime:
+            return
 
         self.last_value = read_value
         pressure = read_value - self.target
