@@ -35,6 +35,9 @@ class KmmsObject:
         status = self.get_status(eventtime)
         return status['filament_detected'] if ('enabled' not in status or status['enabled']) else None
 
+    def __str__(self):
+        return self.name
+
 
 class KmmsPath:
     KmmsObject = KmmsObject
