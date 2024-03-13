@@ -202,11 +202,11 @@ class Kmms:
 
     def activate_extruder(self, extruder_name: str):
         self.logger.info('Activating extruder %s', extruder_name)
-        self.gcode.run_script('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
+        self.gcode.run_script_from_command('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
 
     def sync_to_extruder(self, extruder_name: str, motion_queue: str):
         self.logger.info('Syncing extruder %s to %s', extruder_name, motion_queue)
-        self.gcode.run_script('SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
+        self.gcode.run_script_from_command('SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
 
     def cmd_KMMS_LOAD_TO_TOOLHEAD(self, gcmd):
         self.toolhead.register_lookahead_callback(lambda print_time: self.move_to_toolhead())
