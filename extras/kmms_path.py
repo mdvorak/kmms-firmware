@@ -29,7 +29,7 @@ class KmmsObject:
             self.flags |= KmmsPath.PATH
 
     def has_flag(self, flag: int):
-        return flag & self.flags
+        return (flag & self.flags) == flag
 
     def filament_detected(self, eventtime):
         status = self.get_status(eventtime)
@@ -102,14 +102,14 @@ class KmmsPath:
 
     def find_all(self, flag: int, start=0, stop=None) -> list[(int, KmmsObject)]:
         self.logger.debug('Finding all %d from %d to %s', flag, start, stop)
-        return [(i, obj) for i, obj in enumerate(self.objects[start:stop]) if obj.has_flag(flag)]
+        return [(start + i, obj) for i, obj in enumerate(self.objects[start:stop]) if obj.has_flag(flag)]
 
     def find_last(self, flag: int, start: int, stop=0) -> (int, Any):
         self.logger.debug('Finding last %d from %d to %s', flag, start, stop)
         for i in reversed(range(stop, start)):
             obj = self.objects[i]
             if obj.has_flag(flag):
-                return start + i, obj
+                return i, obj
         return -1, None
 
     def __getitem__(self, pos):
