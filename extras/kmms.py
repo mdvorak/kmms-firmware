@@ -68,6 +68,7 @@ class Kmms:
         self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_insert)
 
         self.gcode.register_command("KMMS_PRELOAD", self.cmd_KMMS_PRELOAD)
+        self.gcode.register_command("KMMS_STATUS", self.cmd_KMMS_STATUS)
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -152,6 +153,7 @@ class Kmms:
             self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
             self.toolhead.flush_step_generation()
             self.gcode.respond_info("KMMS: Moved %.1f mm" % self.get_position())
+            return True
         finally:
             # Always activate final extruder
             # TODO do it in the callback?
@@ -161,10 +163,6 @@ class Kmms:
             # TODO do it better
             for _, extruder in extruders + [(-1, drive_extruder)]:
                 self.sync_to_extruder(extruder.name, drive_extruder.name)
-
-        lines = [f'{obj.name}={obj.filament_detected(Reactor.NOW)}' for _, obj in path.find_all(path.SENSOR)]
-        self.gcode.respond_info("KMMS: Sensors:\n  %s" % '\n  '.join(lines))
-        return True
 
     def get_position(self):
         return self.toolhead.get_position()[3]
@@ -193,6 +191,12 @@ class Kmms:
             self.move_to_toolhead()
         except KmmsError as e:
             self.gcode.respond_info('KMMS Error: %s', e)
+
+    def cmd_KMMS_STATUS(self):
+        eventtime = self.reactor.monotonic()
+        lines = ["{}/{}={}".format(obj.name, k.upper(), v) for obj in self.active_path.objects for k, v in
+                 obj.get_status(eventtime).items()]
+        self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
 
 
 def load_config(config):
