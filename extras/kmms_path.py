@@ -54,7 +54,7 @@ class KmmsPath:
         self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
 
-        self.path = config.getlists('path', seps=(',', '\n'))
+        self.path = config.getlist('path', sep='\n')
         self.objects = []
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
