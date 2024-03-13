@@ -68,6 +68,10 @@ class KmmsPath:
         self.logger.info('Adding object %s', wrapper.name)
         self.objects.append(wrapper)
 
+        # If obj is another path, explode it
+        if isinstance(obj, KmmsPath):
+            self.objects.extend(obj.objects)
+
     def lookup_object(self, name):
         self.add_object(self.printer.lookup_object(name))
 
