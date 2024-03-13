@@ -38,11 +38,16 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         ppins = self.printer.lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
         self.mcu_adc.setup_minmax(ADC_SAMPLE_TIME, ADC_SAMPLE_COUNT)
-        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, self.adc_callback)
+        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, None)
 
         # Register events and commands
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+
         self.gcode.register_mux_command("SET_BACK_PRESSURE", "SENSOR", self.name,
                                         self.cmd_SET_BACK_PRESSURE, desc=self.cmd_SET_BACK_PRESSURE_help)
+
+    def _handle_ready(self):
+        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, self.adc_callback)
 
     def _pressure_event_handler(self, eventtime):
         self._exec_event('kmms:backpressure', eventtime, self.full_name, self.last_pressure)
