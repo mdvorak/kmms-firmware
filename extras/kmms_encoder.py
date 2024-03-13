@@ -24,7 +24,7 @@ from extras import pulse_counter
 
 
 # Original name was MmuEncoder
-class Encoder:
+class KmmsEncoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
 
     RUNOUT_DISABLED = 0
@@ -39,7 +39,7 @@ class Encoder:
         self.reactor = self.printer.get_reactor()
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, self.full_name)
 
         # For counter functionality
         encoder_pin = config.get('encoder_pin')
@@ -267,4 +267,7 @@ class Encoder:
 
 
 def load_config_prefix(config):
-    return Encoder(config)
+    obj = KmmsEncoder(config)
+    # Register as a filament_switch_sensor as well, to be displayed in UI
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.full_name, obj)
+    return obj

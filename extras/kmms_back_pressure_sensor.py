@@ -14,7 +14,7 @@ ADC_SAMPLE_COUNT = 15
 TOLERANCE = 0.01
 
 
-class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
+class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
     # noinspection PyMissingConstructor
     def __init__(self, config):
         # NOTE we inherit SwitchSensor, but we don't call its constructor at all
@@ -28,7 +28,7 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.name = config.get_name().split()[-1]
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, self.full_name)
 
         # Read config
         self.min = config.getfloat('min', minval=0, maxval=1)
@@ -86,7 +86,7 @@ class BackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
 
 def load_config_prefix(config):
-    obj = BackPressureSensor(config)
+    obj = KmmsBackPressureSensor(config)
     # Register as a filament_switch_sensor as well, to be displayed in UI
-    config.get_printer().add_object("filament_switch_sensor %s" % obj.name, obj)
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.full_name, obj)
     return obj

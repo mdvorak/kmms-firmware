@@ -16,22 +16,23 @@ class EventsRunoutHelper:
     printer: Printer
     reactor: Reactor
 
-    def __init__(self, config: ConfigWrapper):
+    def __init__(self, config: ConfigWrapper, name: str):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
-        self.full_name = config.get_name()
-        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         self.printer.load_object(config, 'pause_resume')
         self.toolhead = None
 
+        self.full_name = config.get_name()
+        self.name = name
+
         # Read config
         unsupported = [opt for opt in ['insert_gcode', 'runout_gcode', 'pause_on_runout', 'pause_delay', 'event_delay']
                        if config.get(opt, None)]
         if unsupported:
             raise self.printer.config_error(
-                '%s options %s are not supported' % (self.full_name, ','.join(unsupported),))
+                '%s options %s are not supported' % (config.get_name(), ','.join(unsupported),))
 
         # Internal state
         self.filament_present = False
@@ -107,10 +108,12 @@ class SwitchSensor:
         buttons = printer.load_object(config, 'buttons')
         switch_pin = config.get('switch_pin')
         buttons.register_buttons([switch_pin], self._button_handler)
-        self.runout_helper = EventsRunoutHelper(config)
+
+        self.full_name = config.get_name()
+        self.name = config.get_name().split()[-1]
+
+        self.runout_helper = EventsRunoutHelper(config, self.name)
         self.get_status = self.runout_helper.get_status
-        self.full_name = self.runout_helper.full_name
-        self.name = self.runout_helper.name
 
     def _button_handler(self, eventtime, state):
         self.runout_helper.note_filament_present(state)
