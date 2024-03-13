@@ -55,6 +55,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.mcu_adc.setup_adc_callback(adc_report_time, self.adc_callback)
 
         # Register as temp sensor for easy diagnostics
+        self.temperature_callback = None
         if config.getboolean('report_as_temperature', False):
             pheaters = self.printer.lookup_object('heaters')
             pheaters.register_sensor(config, self)
@@ -94,6 +95,9 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
             if self.runout_helper.sensor_enabled:
                 self.reactor.register_callback(self._pressure_event_handler)
 
+        if self.temperature_callback is not None:
+            self.temperature_callback(read_time, round(self.last_value * 100., 2))
+
     def get_status(self, eventtime):
         return self.runout_helper.get_status(eventtime) | {
             'min': round(self.min, 3),
@@ -103,7 +107,10 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         }
 
     def get_temp(self, eventtime):
-        return round(self.last_value * 100., 1), round(self.target * 100., 1)
+        return round(self.last_value * 100., 2), round(self.target * 100., 2)
+
+    def setup_callback(self, temperature_callback):
+        self.temperature_callback = temperature_callback
 
     cmd_SET_BACK_PRESSURE_help = "Configure backpressure sensor"
 
