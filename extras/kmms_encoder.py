@@ -117,7 +117,7 @@ class KmmsEncoder:
 
     # Called periodically to check filament movement
     def _extruder_pos_update_event(self, eventtime):
-        if self.runout_helper.sensor_enabled and self.detection_mode > self.RUNOUT_DISABLED:
+        if self.detection_mode > self.RUNOUT_DISABLED:
             extruder_pos = self._get_extruder_pos(eventtime)
 
             # First lets see if we got encoder movement since last invocation
@@ -165,8 +165,6 @@ class KmmsEncoder:
 
     # Called periodically to tune the clog detection length
     def _update_detection_length(self, increase_only=False):
-        if not self.runout_helper.sensor_enabled:
-            return
         if self.detection_mode != self.RUNOUT_AUTOMATIC:
             return
 

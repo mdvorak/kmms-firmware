@@ -4,11 +4,92 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+from typing import Any
 
+import reactor
 from gcode import GCodeDispatch
 from klippy import Printer
 from reactor import Reactor, ReactorCompletion
 from toolhead import ToolHead
+
+
+class KmmsObject:
+    name: str
+
+    NONE = 0
+    SENSOR = 1
+    EXTRUDER = 2
+    SYNCING_EXTRUDER = 4
+
+    def __init__(self, obj):
+        self.obj = obj
+        self.name = obj.full_name or obj.name
+        self.get_status = obj.get_status
+
+        # Build flags
+        self.flags = self.NONE
+        if 'filament_detected' in obj.get_status(reactor.Reactor.NEVER):
+            self.flags |= self.SENSOR
+        if hasattr(obj, 'move'):
+            self.flags |= self.EXTRUDER
+        if hasattr(obj, 'sync_to_extruder'):
+            self.flags |= self.SYNCING_EXTRUDER
+
+    def has_flag(self, flag: int):
+        return flag & self.flags
+
+    def filament_detected(self, eventtime):
+        status = self.get_status(eventtime)
+        return status['filament_detected'] and ('enabled' not in status or status['enabled'])
+
+
+class KmmsPath:
+    objects: list[KmmsObject]
+    printer: Printer
+
+    def __init__(self, printer, name):
+        self.printer = printer
+        self.name = name
+        self.objects = []
+
+    def add_object(self, obj):
+        self.objects.append(KmmsObject(obj))
+
+    def lookup_object(self, name):
+        self.add_object(self.printer.lookup_object(name))
+
+    def find_position(self, eventtime) -> (int, Any):
+        result = (-1, None)
+        for i, obj in enumerate(self.objects):
+            filament_detected = obj.filament_detected(eventtime)
+            if filament_detected:
+                result = (i, obj)
+            elif filament_detected is not None:
+                # Stop on first empty sensor - this skips components that does not track filament
+                break
+        return result
+
+    def find_next(self, flag: int, start=0, stop=None) -> (int, Any):
+        for i, obj in enumerate(self.objects[start:stop]):
+            if obj.has_flag(flag):
+                return start + i, obj
+        return -1, None
+
+    def find_all(self, flag: int, start=0, stop=None) -> list[(int, KmmsObject)]:
+        return [(i, obj) for i, obj in enumerate(self.objects[start:stop]) if obj.has_flag(flag)]
+
+    def find_last(self, flag: int, start: int, stop=0) -> (int, Any):
+        for i in reversed(range(stop, start)):
+            obj = self.objects[i]
+            if obj.has_flag(flag):
+                return start + i, obj
+        return -1, None
+
+    def __getitem__(self, pos):
+        return self.objects[pos]
+
+    def __len__(self):
+        return len(self.objects)
 
 
 class Kmms:
@@ -16,6 +97,8 @@ class Kmms:
     reactor: Reactor
     gcode: GCodeDispatch
     toolhead: ToolHead
+    paths: list[KmmsPath]
+    extruders: list[KmmsObject]
 
     def __init__(self, config):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
@@ -24,27 +107,23 @@ class Kmms:
         self.gcode = self.printer.lookup_object('gcode')
         self.endstop = KmmsVirtualEndstop(self.printer)
 
-        # self.spools = self.joins = self.encoders = self.filament_switches = self.backpressure_sensors = None
-        # self.paths = dict()
-
-        self.path = []
+        self.path = KmmsPath(self.printer, 'spool_0')
+        self.paths = [self.path]
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.printer.register_event_handler("kmms:filament_insert", self._handle_filament_runout)
         self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_insert)
 
-        self.gcode.register_command("_KMMS_MOVE_NEXT", self.cmd_KMMS_MOVE_NEXT)
+        self.gcode.register_command("_KMMS_LOAD_TO_TOOLHEAD", self.cmd_KMMS_LOAD_TO_TOOLHEAD)
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
 
-        self.path = [
-            self.printer.lookup_object("kmms_extruder hub"),
-            self.printer.lookup_object("kmms_filament_switch_sensor hub"),
-            self.printer.lookup_object("kmms_filament_switch_sensor toolhead"),
-            self.printer.lookup_object("extruder"),
-            self.printer.lookup_object("kmms_filament_switch_sensor extruder"),
-        ]
+        self.path.lookup_object("kmms_extruder hub")
+        self.path.lookup_object("kmms_filament_switch_sensor hub")
+        self.path.lookup_object("kmms_filament_switch_sensor toolhead")
+        self.path.lookup_object("extruder")
+        self.path.lookup_object("kmms_filament_switch_sensor extruder")
 
     def _handle_filament_insert(self, eventtime, full_name):
         pass
@@ -52,103 +131,68 @@ class Kmms:
     def _handle_filament_runout(self, eventtime, full_name):
         pass
 
-    def find_filament_pos(self):
+    def move_to_toolhead(self):
+        path = self.path
         eventtime = self.reactor.monotonic()
-        pos = -1
 
-        for i, obj in enumerate(self.path):
-            status = obj.get_status(eventtime)
-            if status['filament_detected'] is True:
-                pos = i
-            elif status['filament_detected'] is False:
-                # Stop on first empty sensor - this skips components that does not track filament
-                break
+        if len(path) < 1:
+            self.gcode.respond_info("KMMS: No filament is selected")
+            return False
 
-        return pos
+        # Find all extruders
+        extruders = path.find_all(KmmsObject.EXTRUDER)
 
-    def move_next(self):
-        if len(self.path) < 1:
-            self.gcode.respond_info("KMMS: No filament path is selected")
+        # Get toolhead extruder
+        toolhead_pos, toolhead_extruder = extruders.pop()
+        if toolhead_extruder is None:
+            self.gcode.respond_info("KMMS: %s does not have any extruders configured" % path.name)
             return False
 
         # Find current position
-        pos = self.find_filament_pos()
+        pos = path.find_position(eventtime)
         if pos < 0:
-            self.gcode.respond_info("KMMS: %s seems to be empty" % self.path[0].full_name)
+            self.gcode.respond_info("KMMS: %s seems to be empty" % path.name)
+            return False
+        if pos >= toolhead_pos:
+            self.gcode.respond_info("KMMS: %s is already at toolhead" % path.name)
             return False
 
-        # Find used extruders
-        extruders = self._find_active_extruders(pos)
-        if not extruders:
-            raise self.printer.config_error(
-                "Cannot complete load sequence, there is no extruder before %s to move the filament" %
-                self.path[pos].full_name)
+        # Desync all known extruders
+        self.printer.send_event('kmms:desync_extruders')
+        # Activate last extruder before toolhead
+        _, drive_extruder = extruders.pop()
+        self.activate_extruder(drive_extruder.name)
+        # Sync all remaining extruders
+        for _, extruder in extruders:
+            self.sync_to_extruder(extruder.name, drive_extruder.name)
 
-        # Find target sensor
-        next_sensor = self._find_sensor(pos + 1)
-        if next_sensor is None:
-            active_extruder = self.toolhead.get_extruder()
-            if active_extruder in extruders:
-                # Perform final move
-                self.toolhead.move(self._new_pos(50))  # TODO speed and pos
-                return False
-            else:
-                # Cannot complete load sequence
-                raise self.printer.config_error(
-                    "Cannot complete load sequence, there is no filament sensor after %s" % self.path[pos].full_name)
+        # Find last sensor before toolhead
+        toolhead_sensor_pos, toolhead_sensor = path.find_last(KmmsObject.SENSOR, toolhead_pos)
 
-        self.gcode.respond_info("KMMS: Next sensor is '%s'" % next_sensor.full_name)
+        # Move to toolhead
+        # TODO this can be handled with static distances later
+        if toolhead_sensor is None:
+            self.gcode.respond_info("KMMS: %s does not have any sensors before toolhead configured" % path.name)
+            return False
 
-        # Perform move
-        self._activate_extruders(extruders)
-        drip_completion = self.endstop.start([next_sensor.full_name])
-
-        # TODO test it!
-        self.toolhead.drip_move(self._new_pos(100), 300, drip_completion)  # TODO speed and pos
-
-        # Try moving next
+        self.gcode.respond_info("KMMS: Next sensor is '%s'" % toolhead_sensor.name)
+        drip_completion = self.endstop.start([toolhead_sensor.name])
+        self.toolhead.drip_move(self.new_pos(100), 300, drip_completion)  # TODO speed and pos
         return True
 
-    def _new_pos(self, e: float):
+    def new_pos(self, e: float):
         pos = self.toolhead.get_position()
         pos[3] += e
         return pos
 
-    def _find_active_extruders(self, pos):
-        # Reverse iteration to zero
-        # TODO
-        extruders = []
-        for i in range(pos, -1, -1):
-            if hasattr(self.path[i], 'move'):
-                extruders.append(self.path[i])
-        return extruders
+    def activate_extruder(self, extruder_name):
+        self.gcode.run_script('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
 
-    @staticmethod
-    def _is_extruder(obj):
-        return hasattr(obj, 'move')
+    def sync_to_extruder(self, extruder_name, motion_queue):
+        self.gcode.run_script('SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
 
-    def _find_sensor(self, start_pos):
-        eventtime = self.reactor.monotonic()
-        # TODO handle disabled
-        return next((obj for obj in self.path[start_pos:] if 'filament_detected' in obj.get_status(eventtime)), None)
-
-    def _activate_extruders(self, extruders):
-        # Activate extruders
-        main_extruder = extruders[-1]
-        main_extruder_name = main_extruder.full_name or main_extruder.name  # PrinterExtruder exposes only name attr
-        synced_extruders = extruders[:-1]
-
-        # Activate main
-        prev_extruder = self.toolhead.get_extruder()
-        if main_extruder is not prev_extruder:
-            self.gcode.run_script("ACTIVATE_EXTRUDER EXTRUDER=%s" % main_extruder_name)
-
-        # Sync the rest
-        for extruder in synced_extruders:
-            extruder.sync_to_extruder(main_extruder_name)
-
-    def cmd_KMMS_MOVE_NEXT(self, gcmd):
-        self.toolhead.register_lookahead_callback(lambda print_time: self.move_next())
+    def cmd_KMMS_LOAD_TO_TOOLHEAD(self, gcmd):
+        self.toolhead.register_lookahead_callback(lambda print_time: self.move_to_toolhead())
 
 
 class KmmsVirtualEndstop:

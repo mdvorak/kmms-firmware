@@ -36,10 +36,18 @@ class KmmsExtruder:
 
         # Event handlers
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+        self.printer.register_event_handler("kmms:desync_extruders", self._desync_extruders)
 
+        # TODO ExtruderStepper now registers commands on its own, but only with a short name - we should unregister it
         gcode = self.printer.lookup_object('gcode')
         gcode.register_mux_command("ACTIVATE_EXTRUDER", "EXTRUDER",
                                    self.full_name, self.cmd_ACTIVATE_EXTRUDER, desc=self.cmd_ACTIVATE_EXTRUDER_help)
+        gcode.register_mux_command("SET_E_ROTATION_DISTANCE", "EXTRUDER",
+                                   self.full_name, self.cmd_SET_E_ROTATION_DISTANCE,
+                                   desc=self.cmd_SET_E_ROTATION_DISTANCE_help)
+        gcode.register_mux_command("SYNC_EXTRUDER_MOTION", "EXTRUDER",
+                                   self.full_name, self.cmd_SYNC_EXTRUDER_MOTION,
+                                   desc=self.cmd_SYNC_EXTRUDER_MOTION_help)
 
     def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
@@ -51,6 +59,13 @@ class KmmsExtruder:
             if module is not None:
                 self.tmc_module = module
                 break
+
+    def _desync_extruders(self):
+        # Ignore if activated
+        if self.toolhead.get_extruder() is self:
+            return
+        # Reset
+        self.sync_to_extruder(None)
 
     def _configure_extruder_stepper(self, trapq, pos, motion_queue=None):
         self.extruder_stepper.stepper.set_position([pos, 0., 0.])
@@ -144,6 +159,17 @@ class KmmsExtruder:
     def cmd_ACTIVATE_EXTRUDER(self, gcmd):
         gcmd.respond_info("Activating extruder %s" % (self.full_name,))
         self.activate()
+
+    cmd_SET_E_ROTATION_DISTANCE_help = "Set extruder rotation distance"
+
+    def cmd_SET_E_ROTATION_DISTANCE(self, gcmd):
+        self.extruder_stepper.cmd_SET_E_ROTATION_DISTANCE(gcmd)
+
+    cmd_SYNC_EXTRUDER_MOTION_help = "Set extruder stepper motion queue"
+
+    def cmd_SYNC_EXTRUDER_MOTION(self, gcmd):
+        motion_queue = gcmd.get('MOTION_QUEUE', None)
+        self.sync_to_extruder(motion_queue)
 
 
 def load_config_prefix(config):
