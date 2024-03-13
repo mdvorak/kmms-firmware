@@ -48,17 +48,22 @@ class KmmsPath:
     printer: Printer
 
     def __init__(self, printer, name):
+        self.logger = logging.getLogger('kmms_path.%s' % name)
         self.printer = printer
         self.name = name
         self.objects = []
 
     def add_object(self, obj):
-        self.objects.append(KmmsObject(obj))
+        wrapper = KmmsObject(obj)
+        self.logger.info('Adding object %s', wrapper.name)
+        self.objects.append(wrapper)
 
     def lookup_object(self, name):
         self.add_object(self.printer.lookup_object(name))
 
     def find_position(self, eventtime) -> (int, Any):
+        # TODO debug log
+        self.logger.info('Finding current position')
         result = (-1, None)
         for i, obj in enumerate(self.objects):
             filament_detected = obj.filament_detected(eventtime) if obj.has_flag(KmmsObject.SENSOR) else None
@@ -67,18 +72,25 @@ class KmmsPath:
             elif filament_detected is not None:
                 # Stop on first empty sensor - this skips components that does not track filament
                 break
+        self.logger.info('Found position at %d', result[0])
         return result
 
     def find_next(self, flag: int, start=0, stop=None) -> (int, Any):
+        # TODO debug log
+        self.logger.info('Finding next %d from %d to %s', flag, start, stop)
         for i, obj in enumerate(self.objects[start:stop]):
             if obj.has_flag(flag):
                 return start + i, obj
         return -1, None
 
     def find_all(self, flag: int, start=0, stop=None) -> list[(int, KmmsObject)]:
+        # TODO debug log
+        self.logger.info('Finding all %d from %d to %s', flag, start, stop)
         return [(i, obj) for i, obj in enumerate(self.objects[start:stop]) if obj.has_flag(flag)]
 
     def find_last(self, flag: int, start: int, stop=0) -> (int, Any):
+        # TODO debug log
+        self.logger.info('Finding last %d from %d to %s', flag, start, stop)
         for i in reversed(range(stop, start)):
             obj = self.objects[i]
             if obj.has_flag(flag):
@@ -144,6 +156,7 @@ class Kmms:
 
         # Get toolhead extruder
         toolhead_pos, toolhead_extruder = extruders.pop()
+        # TODO pop throws, report error before that
         if toolhead_extruder is None:
             self.gcode.respond_info("KMMS: %s does not have any extruders configured" % path.name)
             return False
@@ -158,8 +171,10 @@ class Kmms:
             return False
 
         # Desync all known extruders
+        self.logger.info('Desync extruders')
         self.printer.send_event('kmms:desync_extruders')
         # Activate last extruder before toolhead
+        # TODO validate before pop
         _, drive_extruder = extruders.pop()
         self.activate_extruder(drive_extruder.name)
         # Sync all remaining extruders
@@ -175,8 +190,8 @@ class Kmms:
             self.gcode.respond_info("KMMS: %s does not have any sensors before toolhead configured" % path.name)
             return False
 
-        self.gcode.respond_info("KMMS: Next sensor is '%s'" % toolhead_sensor.name)
         drip_completion = self.endstop.start([toolhead_sensor.name])
+        self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
         self.toolhead.drip_move(self.new_pos(100), 300, drip_completion)  # TODO speed and pos
         return True
 
@@ -185,10 +200,12 @@ class Kmms:
         pos[3] += e
         return pos
 
-    def activate_extruder(self, extruder_name):
+    def activate_extruder(self, extruder_name: str):
+        self.logger.info('Activating extruder %s', extruder_name)
         self.gcode.run_script('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
 
-    def sync_to_extruder(self, extruder_name, motion_queue):
+    def sync_to_extruder(self, extruder_name: str, motion_queue: str):
+        self.logger.info('Syncing extruder %s to %s', extruder_name, motion_queue)
         self.gcode.run_script('SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
 
     def cmd_KMMS_LOAD_TO_TOOLHEAD(self, gcmd):
