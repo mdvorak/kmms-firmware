@@ -23,7 +23,7 @@ class KmmsObject:
 
     def __init__(self, obj):
         self.obj = obj
-        self.name = obj.full_name or obj.name
+        self.name = getattr(obj, 'full_name', None) or obj.name
         self.get_status = obj.get_status
 
         # Build flags
