@@ -101,7 +101,6 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.min = max(0, min(1, gcmd.get_float('MIN', self.min)))
         self.target = max(0, min(1, gcmd.get_float('TARGET', self.target)))
         self.runout_helper.sensor_enabled = gcmd.get_int('ENABLE', self.runout_helper.sensor_enabled)
-        self.runout_helper.runout_pause = gcmd.get_int('PAUSE_ON_RUNOUT', self.runout_helper.runout_pause)
 
         status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(self.reactor.monotonic())]
         gcmd.respond_info("Back-pressure sensor %s: %s" % (self.name, status))
