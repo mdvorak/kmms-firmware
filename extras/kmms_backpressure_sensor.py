@@ -37,7 +37,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.name = config.get_name().split()[-1]
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "%s_back_pressure" % self.name)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "%s_backpressure" % self.name)
         self.min_event_systime = self.reactor.NEVER
 
         # Read config
@@ -97,7 +97,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
             'pressure': round(self.last_pressure, 3)
         }
 
-    cmd_SET_BACK_PRESSURE_help = "Configure back-pressure sensor"
+    cmd_SET_BACK_PRESSURE_help = "Configure backpressure sensor"
 
     def cmd_SET_BACK_PRESSURE(self, gcmd):
         self.min = max(0, min(1, gcmd.get_float('MIN', self.min)))
@@ -106,12 +106,12 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
         self.cmd_QUERY_BACK_PRESSURE(gcmd)
 
-    cmd_QUERY_BACK_PRESSURE_help = "Query back-pressure sensor status"
+    cmd_QUERY_BACK_PRESSURE_help = "Query backpressure sensor status"
 
     def cmd_QUERY_BACK_PRESSURE(self, gcmd):
         eventtime = self.reactor.monotonic()
         status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(eventtime).items()]
-        gcmd.respond_info(f"Back-pressure sensor %s: %s" % (self.name, status))
+        gcmd.respond_info(f"Backpressure sensor %s: %s" % (self.name, status))
 
 
 def load_config_prefix(config):

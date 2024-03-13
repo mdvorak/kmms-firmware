@@ -24,7 +24,7 @@ class Kmms:
         self.gcode = self.printer.lookup_object('gcode')
         self.endstop = KmmsVirtualEndstop(self.printer)
 
-        # self.spools = self.joins = self.encoders = self.filament_switches = self.back_pressure_sensors = None
+        # self.spools = self.joins = self.encoders = self.filament_switches = self.backpressure_sensors = None
         # self.paths = dict()
 
         self.path = []
