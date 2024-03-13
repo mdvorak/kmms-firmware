@@ -149,7 +149,7 @@ class Kmms:
             return False
 
         # Find current position
-        pos = path.find_position(eventtime)
+        pos, _ = path.find_position(eventtime)
         if pos < 0:
             self.gcode.respond_info("KMMS: %s seems to be empty" % path.name)
             return False
