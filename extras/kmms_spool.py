@@ -9,6 +9,10 @@
 import logging
 
 from configfile import ConfigWrapper
+from gcode import GCodeDispatch
+from klippy import Printer
+from reactor import Reactor
+from toolhead import ToolHead
 
 PIN_MIN_TIME = 0.010
 RESEND_HOST_TIME = 0.300 + PIN_MIN_TIME
@@ -20,12 +24,16 @@ class Spool(object):
     STATUS_LOADING = "Loading"
     STATUS_UNLOADING = "Unloading"
 
+    printer: Printer
+    reactor: Reactor
+    gcode: GCodeDispatch
+    toolhead: ToolHead
+
     def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
-        self.toolhead = None
 
         self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]

@@ -18,6 +18,8 @@
 import logging
 
 from configfile import ConfigWrapper
+from klippy import Printer
+from reactor import Reactor
 
 from . import kmms_filament_switch_sensor
 from extras import pulse_counter
@@ -30,6 +32,9 @@ class KmmsEncoder:
     RUNOUT_DISABLED = 0
     RUNOUT_STATIC = 1
     RUNOUT_AUTOMATIC = 2
+
+    printer: Printer
+    reactor: Reactor
 
     def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
