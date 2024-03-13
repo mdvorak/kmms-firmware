@@ -66,6 +66,8 @@ class KmmsExtruder:
                 self.tmc_module = module
                 break
 
+        self.toolhead.register_step_generator(self.generate_steps)
+
     def _desync_extruders(self):
         # Ignore if activated
         if self.toolhead.get_extruder() is self:
@@ -77,12 +79,6 @@ class KmmsExtruder:
         self.extruder_stepper.stepper.set_position([pos, 0., 0.])
         self.extruder_stepper.stepper.set_trapq(trapq)
         self.extruder_stepper.motion_queue = motion_queue
-
-        if trapq:
-            if self.generate_steps not in self.toolhead.step_generators:
-                self.toolhead.register_step_generator(self.generate_steps)
-        else:
-            self.toolhead.step_generators.remove(self.generate_steps)
 
     def sync_to_extruder(self, extruder_name):
         # NOTE we intentionally don't use ExtruderStepper.sync_to_extruder, since that method has limitations
