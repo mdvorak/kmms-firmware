@@ -127,7 +127,8 @@ class Kmms:
         if toolhead_sensor is None and len(backpressure_sensors) < 1:
             raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.name)
 
-        lines = [f'{obj.name}=>{obj.filament_detected(0)}' for obj in backpressure_sensors]
+        lines = [f'{obj.name}=>{obj.filament_detected(0)}' for _, obj in
+                 path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
         self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
 
         try:
