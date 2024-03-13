@@ -13,7 +13,7 @@ from reactor import Reactor
 
 from . import kmms_filament_switch_sensor
 
-ADC_REPORT_TIME = 0.015
+ADC_REPORT_TIME = 0.100
 ADC_SAMPLE_TIME = 0.001
 ADC_SAMPLE_COUNT = 6
 TOLERANCE = 0.01
@@ -53,6 +53,9 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
         self.mcu_adc.setup_minmax(adc_sample_time, adc_sample_count)
         self.mcu_adc.setup_adc_callback(adc_report_time, self.adc_callback)
+
+        query_adc = config.get_printer().load_object(config, 'query_adc')
+        query_adc.register_adc(config.get_name(), self.mcu_adc)
 
         # Register as temp sensor for easy diagnostics
         self.temperature_callback = None
