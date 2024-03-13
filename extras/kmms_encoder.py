@@ -64,7 +64,8 @@ class Encoder:
         # Detection length will be set by MMU calibration
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
         self.extruder = self.estimated_print_time = None
-        self.detection_mode = config.getchoice('detection_mode', [0, 1, 2], self.RUNOUT_STATIC)
+        self.detection_mode = config.getint('detection_mode', self.RUNOUT_STATIC,
+                                            minval=self.RUNOUT_DISABLED, maxval=self.RUNOUT_AUTOMATIC)
         self.last_extruder_pos = self.filament_runout_pos = 0.
 
         # For flowrate functionality
