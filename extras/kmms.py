@@ -152,8 +152,6 @@ class Kmms:
             self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
             self.toolhead.flush_step_generation()
             self.gcode.respond_info("KMMS: Moved %.1f mm" % self.get_position())
-
-            return True
         finally:
             # Always activate final extruder
             # TODO do it in the callback?
@@ -163,6 +161,10 @@ class Kmms:
             # TODO do it better
             for _, extruder in extruders + [(-1, drive_extruder)]:
                 self.sync_to_extruder(extruder.name, drive_extruder.name)
+
+        lines = [f'{obj.name}={obj.filament_detected(Reactor.NOW)}' for _, obj in path.find_all(path.SENSOR)]
+        self.gcode.respond_info("KMMS: Sensors:\n  %s" % '\n  '.join(lines))
+        return True
 
     def get_position(self):
         return self.toolhead.get_position()[3]
