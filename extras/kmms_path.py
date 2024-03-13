@@ -54,14 +54,14 @@ class KmmsPath:
         self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
 
-        self.path = config.getlist('path')
+        self.path = config.getlists('path', seps=(',', '\n'))
         self.objects = []
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     def _handle_ready(self):
         for obj_name in self.path:
-            self.lookup_object(obj_name)
+            self.lookup_object(obj_name.strip())
 
     def add_object(self, obj):
         wrapper = KmmsObject(obj)
