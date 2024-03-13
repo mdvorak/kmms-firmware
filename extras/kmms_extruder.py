@@ -25,8 +25,14 @@ class KmmsExtruder:
         self.generate_steps = self.extruder_stepper.stepper.generate_steps
         self.tmc_module = None
 
-        self.max_velocity = config.getfloat('max_velocity', above=0.)
-        self.max_accel = config.getfloat('max_accel', above=0.)
+        global_config = config.getsection('kmms')
+
+        def config_getfloat(name, **kwargs):
+            ret = config.getfloat(name, default=None, **kwargs)
+            return ret if ret is not None else global_config.getfloat(name, **kwargs)
+
+        self.max_velocity = config_getfloat('max_velocity', above=0.)
+        self.max_accel = config_getfloat('max_accel', above=0.)
         self.last_position = 0.
 
         ffi_main, ffi_lib = chelper.get_ffi()
