@@ -109,8 +109,9 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
     cmd_QUERY_BACK_PRESSURE_help = "Query back-pressure sensor status"
 
     def cmd_QUERY_BACK_PRESSURE(self, gcmd):
-        status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(self.reactor.monotonic())]
-        gcmd.respond_info("Back-pressure sensor %s: %s" % (self.name, status))
+        eventtime = self.reactor.monotonic()
+        status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(eventtime).items()]
+        gcmd.respond_info(f"Back-pressure sensor %s: %s" % (self.name, status))
 
 
 def load_config_prefix(config):

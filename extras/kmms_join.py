@@ -32,7 +32,7 @@ class Join(object):
         self.available_switch_pin_names = [self._available_switch_name(i)
                                            for i in range(len(available_switch_pins))]
         self.available_switch_list = [self._define_filament_switch_sensor(config, name, pin) for name, pin in
-                                      zip(self.available_switch_pin_names, available_switch_pins, strict=True)]
+                                      zip(self.available_switch_pin_names, available_switch_pins)]
 
     def get_filament_detected(self):
         return self.filament_switch.runout_helper.filament_present
