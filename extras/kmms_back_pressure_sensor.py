@@ -8,9 +8,9 @@ import logging
 import extras.filament_switch_sensor
 from . import kmms_filament_switch_sensor
 
-ADC_REPORT_TIME = 0.200
-ADC_SAMPLE_TIME = 0.03
-ADC_SAMPLE_COUNT = 15
+ADC_REPORT_TIME = 0.015
+ADC_SAMPLE_TIME = 0.001
+ADC_SAMPLE_COUNT = 6
 TOLERANCE = 0.01
 
 
@@ -36,10 +36,14 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.target = config.getfloat('target', minval=0, maxval=1)
         self.last_value = self.last_pressure = .0
 
+        adc_report_time = config.getfloat('adc_report_time', ADC_REPORT_TIME, above=0.)
+        adc_sample_time = config.getfloat('adc_sample_time', ADC_SAMPLE_TIME, above=0.)
+        adc_sample_count = config.getint('adc_sample_count', ADC_SAMPLE_COUNT, min=1)
+
         ppins = self.printer.lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
-        self.mcu_adc.setup_minmax(ADC_SAMPLE_TIME, ADC_SAMPLE_COUNT)
-        self.mcu_adc.setup_adc_callback(ADC_REPORT_TIME, self.adc_callback)
+        self.mcu_adc.setup_minmax(adc_sample_time, adc_sample_count)
+        self.mcu_adc.setup_adc_callback(adc_report_time, self.adc_callback)
 
         # Register events and commands
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
