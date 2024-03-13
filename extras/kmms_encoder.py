@@ -63,9 +63,8 @@ class Encoder:
                                                                                 minval=50.)  # 10m
         # Detection length will be set by MMU calibration
         self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
-        self.min_event_systime = self.reactor.NEVER
         self.extruder = self.estimated_print_time = None
-        self.detection_mode = self.RUNOUT_STATIC
+        self.detection_mode = config.getchoice('detection_mode', [0, 1, 2], self.RUNOUT_STATIC)
         self.last_extruder_pos = self.filament_runout_pos = 0.
 
         # For flowrate functionality
@@ -90,7 +89,6 @@ class Encoder:
         self.filament_runout_pos = self.min_headroom = self.detection_length
 
     def _handle_ready(self):
-        self.min_event_systime = self.reactor.monotonic() + 2.  # Don't process events too early
         self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self._reset_filament_runout_params()
         self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
@@ -112,7 +110,7 @@ class Encoder:
 
     # Called periodically to check filament movement
     def _extruder_pos_update_event(self, eventtime):
-        if self.runout_helper.sensor_enabled:
+        if self.runout_helper.sensor_enabled and self.detection_mode > self.RUNOUT_DISABLED:
             extruder_pos = self._get_extruder_pos(eventtime)
 
             # First lets see if we got encoder movement since last invocation
