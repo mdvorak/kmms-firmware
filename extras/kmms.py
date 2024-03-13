@@ -192,7 +192,7 @@ class Kmms:
         except KmmsError as e:
             self.gcode.respond_info('KMMS Error: %s', e)
 
-    def cmd_KMMS_STATUS(self):
+    def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()
         lines = ["{}/{}={}".format(obj.name, k.upper(), v) for obj in self.active_path.objects for k, v in
                  obj.get_status(eventtime).items()]
