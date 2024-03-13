@@ -6,6 +6,8 @@ from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from klippy import Printer
 from toolhead import ToolHead
 
+TRINAMIC_DRIVERS = ["tmc2130", "tmc2208", "tmc2209", "tmc2240", "tmc2660", "tmc5160"]
+
 
 # This class mimics PrinterExtruder
 class KmmsExtruder:
@@ -20,6 +22,7 @@ class KmmsExtruder:
 
         self.extruder_stepper = ExtruderStepper(config)
         self.generate_steps = self.extruder_stepper.stepper.generate_steps
+        self.tmc_module = None
 
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
@@ -39,6 +42,14 @@ class KmmsExtruder:
 
     def _handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+
+        # Make sure TMC drivers are loaded
+        for driver in TRINAMIC_DRIVERS:
+            driver_name = "%s %s" % (driver, self.full_name)
+            module = self.printer.lookup_object(driver_name, None)
+            if module is not None:
+                self.tmc_module = module
+                break
 
     def _configure_extruder_stepper(self, trapq, pos, motion_queue=None):
         self.extruder_stepper.stepper.set_position([pos, 0., 0.])
@@ -114,7 +125,7 @@ class KmmsExtruder:
         return move.max_cruise_v2
 
     def get_name(self):
-        return self.name
+        return self.full_name
 
     def get_heater(self):
         raise self.printer.command_error("'%s' does not have a heater" % self.full_name)
