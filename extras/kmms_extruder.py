@@ -142,3 +142,7 @@ class KmmsExtruder:
 
     def cmd_ACTIVATE_EXTRUDER(self, gcmd):
         self.activate()
+
+
+def load_config_prefix(config):
+    return KmmsExtruder(config)
