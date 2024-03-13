@@ -40,7 +40,7 @@ class KmmsObject:
 
     def filament_detected(self, eventtime):
         status = self.get_status(eventtime)
-        return status['filament_detected'] and ('enabled' not in status or status['enabled'])
+        return status['filament_detected'] if ('enabled' not in status or status['enabled']) else None
 
 
 class KmmsPath:
@@ -61,7 +61,7 @@ class KmmsPath:
     def find_position(self, eventtime) -> (int, Any):
         result = (-1, None)
         for i, obj in enumerate(self.objects):
-            filament_detected = obj.filament_detected(eventtime)
+            filament_detected = obj.filament_detected(eventtime) if obj.has_flag(KmmsObject.SENSOR) else None
             if filament_detected:
                 result = (i, obj)
             elif filament_detected is not None:
