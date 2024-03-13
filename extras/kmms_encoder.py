@@ -39,7 +39,7 @@ class Encoder:
         self.reactor = self.printer.get_reactor()
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.CustomRunoutHelper(config)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config)
 
         # For counter functionality
         encoder_pin = config.get('encoder_pin')

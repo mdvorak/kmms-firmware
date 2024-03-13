@@ -12,7 +12,7 @@ from klippy import Printer
 from reactor import Reactor
 
 
-class CustomRunoutHelper:
+class EventsRunoutHelper:
     printer: Printer
     reactor: Reactor
 
@@ -34,7 +34,6 @@ class CustomRunoutHelper:
                 '%s options %s are not supported' % (self.full_name, ','.join(unsupported),))
 
         # Internal state
-        self.min_event_systime = self.reactor.NEVER
         self.filament_present = False
         self.sensor_enabled = True
 
@@ -42,17 +41,14 @@ class CustomRunoutHelper:
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
         # We are going to replace previous runout_helper mux commands with ours
-        _replace_mux_command(self.gcode,
-                             "QUERY_FILAMENT_SENSOR", "SENSOR", self.name,
-                             self.cmd_QUERY_FILAMENT_SENSOR, desc=self.cmd_QUERY_FILAMENT_SENSOR_help)
+        self.gcode.register_mux_command("QUERY_FILAMENT_SENSOR", "SENSOR", self.name,
+                                        self.cmd_QUERY_FILAMENT_SENSOR, desc=self.cmd_QUERY_FILAMENT_SENSOR_help)
 
-        _replace_mux_command(self.gcode,
-                             "SET_FILAMENT_SENSOR", "SENSOR", self.name,
-                             self.cmd_SET_FILAMENT_SENSOR, desc=self.cmd_SET_FILAMENT_SENSOR_help)
+        self.gcode.register_mux_command("SET_FILAMENT_SENSOR", "SENSOR", self.name,
+                                        self.cmd_SET_FILAMENT_SENSOR, desc=self.cmd_SET_FILAMENT_SENSOR_help)
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.min_event_systime = self.reactor.monotonic() + 2.  # Time to wait before first events are processed
 
     def _runout_event_handler(self, eventtime):
         self._exec_event('kmms:filament_runout', eventtime, self.full_name)
@@ -105,39 +101,16 @@ class CustomRunoutHelper:
         self.sensor_enabled = gcmd.get_int("ENABLE", 1)
 
 
-def _replace_mux_command(gcode, cmd, key, value, func, desc=None):
-    # Remove existing, if it exists
-    prev = gcode.mux_commands.get(cmd)
-    if prev:
-        prev_key, prev_values = prev
-        if prev_key == key:
-            del prev_values[value]
-
-    # Register new
-    gcode.register_mux_command(cmd, key, value, func, desc=desc)
-
-
-def runout_helper_attach(obj, config):
-    obj.runout_helper = CustomRunoutHelper(config)
-    obj.get_status = obj.runout_helper.get_status
-    obj.full_name = obj.runout_helper.full_name
-    obj.name = obj.runout_helper.name
-    return obj
-
-
 class SwitchSensor:
     def __init__(self, config):
         printer = config.get_printer()
         buttons = printer.load_object(config, 'buttons')
         switch_pin = config.get('switch_pin')
         buttons.register_buttons([switch_pin], self._button_handler)
-        self.runout_helper = CustomRunoutHelper(config)
+        self.runout_helper = EventsRunoutHelper(config)
         self.get_status = self.runout_helper.get_status
         self.full_name = self.runout_helper.full_name
         self.name = self.runout_helper.name
-
-        # Register self as a filament_switch_sensor as well, to be displayed in UI
-        printer.add_object("filament_switch_sensor %s" % self.runout_helper.name, self)
 
     def _button_handler(self, eventtime, state):
         self.runout_helper.note_filament_present(state)
@@ -145,6 +118,6 @@ class SwitchSensor:
 
 def load_config_prefix(config):
     obj = SwitchSensor(config)
-
-    # noinspection PyTypeChecker
-    return runout_helper_attach(obj, config)
+    # Register as a filament_switch_sensor as well, to be displayed in UI
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.name, obj)
+    return obj
