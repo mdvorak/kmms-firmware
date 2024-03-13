@@ -9,13 +9,6 @@ from reactor import Reactor
 class KmmsObject:
     name: str
 
-    NONE = 0
-    SENSOR = 1
-    EXTRUDER = 2
-    SYNCING_EXTRUDER = 4
-    BACKPRESSURE = 8 | SENSOR
-    PATH = 16
-
     def __init__(self, obj):
         self.obj = obj
         self.name = getattr(obj, 'full_name', None) or obj.name
@@ -25,15 +18,15 @@ class KmmsObject:
         status = obj.get_status(Reactor.NEVER)
 
         # Build flags
-        self.flags = self.NONE
+        self.flags = KmmsPath.NONE
         if 'filament_detected' in status:
-            self.flags |= self.SENSOR
+            self.flags |= KmmsPath.SENSOR
         if hasattr(obj, 'move'):
-            self.flags |= self.EXTRUDER
+            self.flags |= KmmsPath.EXTRUDER
         if hasattr(obj, 'sync_to_extruder'):
-            self.flags |= self.SYNCING_EXTRUDER
+            self.flags |= KmmsPath.SYNCING_EXTRUDER
         if isinstance(obj, KmmsPath):
-            self.flags |= self.PATH
+            self.flags |= KmmsPath.PATH
 
     def has_flag(self, flag: int):
         return flag & self.flags
@@ -44,6 +37,15 @@ class KmmsObject:
 
 
 class KmmsPath:
+    KmmsObject = KmmsObject
+
+    NONE = 0
+    SENSOR = 1
+    EXTRUDER = 2
+    SYNCING_EXTRUDER = 4
+    BACKPRESSURE = 8 | SENSOR
+    PATH = 16
+
     objects: list[KmmsObject]
     printer: Printer
 
@@ -79,7 +81,7 @@ class KmmsPath:
         self.logger.debug('Finding current position')
         result = (-1, None)
         for i, obj in enumerate(self.objects):
-            filament_detected = obj.filament_detected(eventtime) if obj.has_flag(KmmsObject.SENSOR) else None
+            filament_detected = obj.filament_detected(eventtime) if obj.has_flag(self.SENSOR) else None
             if filament_detected:
                 result = (i, obj)
             elif filament_detected is not None:
@@ -116,3 +118,7 @@ class KmmsPath:
 
 def load_config_prefix(config):
     return KmmsPath(config)
+
+
+def load_config(config):
+    return KmmsPath
