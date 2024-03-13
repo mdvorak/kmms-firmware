@@ -26,7 +26,7 @@ class Join(object):
         self.name = config.get_name().split()[-1]
 
         # Read config
-        self.filament_switch = self._define_filament_switch_sensor(config, self.name, config.get('filament_switch_pin'))
+        self.filament_switch = self._define_filament_switch_sensor(config, self.name, config.get('switch_pin'))
 
         available_switch_pins = config.getlist('available_switch_pins', None)
         if available_switch_pins:
@@ -35,13 +35,6 @@ class Join(object):
                                                for i in range(self.count)]
             self.available_switch_list = [self._define_filament_switch_sensor(config, name, pin) for name, pin in
                                           zip(self.available_switch_pin_names, available_switch_pins)]
-
-            count = config.getint('count', self.count)
-            if count != self.count:
-                raise self.printer.config_error(
-                    "When using available_switch_pins, count must be either same or omitted")
-        else:
-            self.count = config.getint('count')
 
     def get_filament_detected(self):
         return self.filament_switch.runout_helper.filament_present
