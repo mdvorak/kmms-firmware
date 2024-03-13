@@ -74,11 +74,11 @@ class EventsRunoutHelper:
         # Perform filament action associated with status change (if any)
         if is_filament_present:
             # insert detected
-            self.logger.info("Filament Sensor %s: insert event detected, Time %.2f", self.name, eventtime)
+            self.logger.info("Filament Sensor %s: insert event detected, Time %.2f", self.full_name, eventtime)
             self.reactor.register_callback(self._insert_event_handler)
         else:
             # runout detected
-            self.logger.info("Filament Sensor %s: runout event detected, Time %.2f", self.name, eventtime)
+            self.logger.info("Filament Sensor %s: runout event detected, Time %.2f", self.full_name, eventtime)
             self.reactor.register_callback(self._runout_event_handler)
 
     def get_status(self, eventtime):
@@ -122,5 +122,5 @@ class SwitchSensor:
 def load_config_prefix(config):
     obj = SwitchSensor(config)
     # Register as a filament_switch_sensor as well, to be displayed in UI
-    config.get_printer().add_object("filament_switch_sensor %s" % obj.name, obj)
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.runout_helper.name, obj)
     return obj

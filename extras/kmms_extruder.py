@@ -16,9 +16,10 @@ class KmmsExtruder:
 
     def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
+        self.printer = config.get_printer()
+
         self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
-        self.printer = config.get_printer()
 
         self.extruder_stepper = ExtruderStepper(config)
         self.generate_steps = self.extruder_stepper.stepper.generate_steps

@@ -22,13 +22,14 @@ class Spool(object):
 
     def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
-        self.full_name = config.get_name()
-        self.name = config.get_name().split()[-1]
-        self.friendly_name = self.name.replace('_', ' ')
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         self.toolhead = None
+
+        self.full_name = config.get_name()
+        self.name = config.get_name().split()[-1]
+        self.friendly_name = self.name.replace('_', ' ')
 
         # Motor PWM
         ppins = self.printer.lookup_object('pins')

@@ -20,15 +20,15 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         # NOTE we inherit SwitchSensor, but we don't call its constructor at all
 
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
-        self.full_name = config.get_name()
-        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
+
+        self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, self.full_name)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "back_pressure_%s" % self.name)
 
         # Read config
         self.min = config.getfloat('min', minval=0, maxval=1)
@@ -88,5 +88,5 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 def load_config_prefix(config):
     obj = KmmsBackPressureSensor(config)
     # Register as a filament_switch_sensor as well, to be displayed in UI
-    config.get_printer().add_object("filament_switch_sensor %s" % obj.full_name, obj)
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.runout_helper.name, obj)
     return obj

@@ -33,13 +33,14 @@ class KmmsEncoder:
 
     def __init__(self, config: ConfigWrapper):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
-        self.full_name = config.get_name()
-        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
 
+        self.full_name = config.get_name()
+        self.name = config.get_name().split()[-1]
+
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, self.full_name)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "encoder_%s" % self.name)
 
         # For counter functionality
         encoder_pin = config.get('encoder_pin')
@@ -269,5 +270,5 @@ class KmmsEncoder:
 def load_config_prefix(config):
     obj = KmmsEncoder(config)
     # Register as a filament_switch_sensor as well, to be displayed in UI
-    config.get_printer().add_object("filament_switch_sensor %s" % obj.full_name, obj)
+    config.get_printer().add_object("filament_switch_sensor %s" % obj.runout_helper.name, obj)
     return obj
