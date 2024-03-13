@@ -54,6 +54,11 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.mcu_adc.setup_minmax(adc_sample_time, adc_sample_count)
         self.mcu_adc.setup_adc_callback(adc_report_time, self.adc_callback)
 
+        # Register as temp sensor for easy diagnostics
+        if config.getboolean('report_as_temperature', False):
+            pheaters = self.printer.lookup_object('heaters')
+            pheaters.register_sensor(config, self)
+
         # Register events and commands
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -96,6 +101,9 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
             'last_value': round(self.last_value, 3),
             'pressure': round(self.last_pressure, 3)
         }
+
+    def get_temp(self, eventtime):
+        return round(self.last_value * 100., 1), round(self.target * 100., 1)
 
     cmd_SET_BACK_PRESSURE_help = "Configure backpressure sensor"
 
