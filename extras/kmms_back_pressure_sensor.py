@@ -37,7 +37,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         self.name = config.get_name().split()[-1]
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "back_pressure_%s" % self.name)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "%s_back_pressure" % self.name)
         self.min_event_systime = self.reactor.NEVER
 
         # Read config

@@ -45,7 +45,7 @@ class KmmsEncoder:
         self.name = config.get_name().split()[-1]
 
         # Runout handler
-        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "encoder_%s" % self.name)
+        self.runout_helper = kmms_filament_switch_sensor.EventsRunoutHelper(config, "%s_encoder" % self.name)
 
         # For counter functionality
         encoder_pin = config.get('encoder_pin')
