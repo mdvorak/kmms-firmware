@@ -54,14 +54,14 @@ class KmmsPath:
         self.full_name = config.get_name()
         self.name = config.get_name().split()[-1]
 
-        self.path = config.getlist('path', sep='\n')
+        self.path = list(filter(None, (p.strip() for p in config.getlist('path', sep='\n'))))
         self.objects = []
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     def _handle_ready(self):
         for obj_name in self.path:
-            self.lookup_object(obj_name.strip())
+            self.lookup_object(obj_name)
 
     def add_object(self, obj):
         wrapper = KmmsObject(obj)
@@ -73,7 +73,7 @@ class KmmsPath:
             self.objects.extend(obj.objects)
 
     def lookup_object(self, name):
-        self.add_object(self.printer.lookup_object(name))
+        self.add_object(self.printer.lookup_object(name.strip()))
 
     def find_position(self, eventtime) -> (int, Any):
         self.logger.debug('Finding current position')
