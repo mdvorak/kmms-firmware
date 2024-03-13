@@ -39,8 +39,8 @@ class Kmms:
         self.toolhead = self.printer.lookup_object('toolhead')
 
         self.path = [
-            self.printer.lookup_object("kmms_extruder hub_0"),
-            self.printer.lookup_object("kmms_filament_switch_sensor hub_0"),
+            self.printer.lookup_object("kmms_extruder hub"),
+            self.printer.lookup_object("kmms_filament_switch_sensor hub"),
             self.printer.lookup_object("kmms_filament_switch_sensor toolhead"),
             self.printer.lookup_object("extruder"),
             self.printer.lookup_object("kmms_filament_switch_sensor extruder"),
@@ -77,7 +77,7 @@ class Kmms:
             self.gcode.respond_info("KMMS: %s seems to be empty" % self.path[0].full_name)
             return False
 
-        # Find usable extruders
+        # Find used extruders
         extruders = self._find_active_extruders(pos)
         if not extruders:
             raise self.printer.config_error(
@@ -114,11 +114,16 @@ class Kmms:
 
     def _find_active_extruders(self, pos):
         # Reverse iteration to zero
+        # TODO
         extruders = []
         for i in range(pos, -1, -1):
-            if hasattr(self.path[i], 'activate'):
+            if hasattr(self.path[i], 'move'):
                 extruders.append(self.path[i])
         return extruders
+
+    @staticmethod
+    def _is_extruder(obj):
+        return hasattr(obj, 'move')
 
     def _find_sensor(self, start_pos):
         eventtime = self.reactor.monotonic()
