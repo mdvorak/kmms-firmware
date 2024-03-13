@@ -7,7 +7,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
-import extras.filament_switch_sensor
 from configfile import ConfigWrapper
 from klippy import Printer
 from reactor import Reactor
@@ -126,8 +125,26 @@ def runout_helper_attach(obj, config):
     return obj
 
 
+class SwitchSensor:
+    def __init__(self, config):
+        printer = config.get_printer()
+        buttons = printer.load_object(config, 'buttons')
+        switch_pin = config.get('switch_pin')
+        buttons.register_buttons([switch_pin], self._button_handler)
+        self.runout_helper = CustomRunoutHelper(config)
+        self.get_status = self.runout_helper.get_status
+        self.full_name = self.runout_helper.full_name
+        self.name = self.runout_helper.name
+
+        # Register self as a filament_switch_sensor as well, to be displayed in UI
+        printer.add_object("filament_switch_sensor %s" % self.runout_helper.name, self)
+
+    def _button_handler(self, eventtime, state):
+        self.runout_helper.note_filament_present(state)
+
+
 def load_config_prefix(config):
-    obj = extras.filament_switch_sensor.SwitchSensor(config)
+    obj = SwitchSensor(config)
 
     # noinspection PyTypeChecker
     return runout_helper_attach(obj, config)
