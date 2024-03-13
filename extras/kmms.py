@@ -127,6 +127,9 @@ class Kmms:
         if toolhead_sensor is None and len(backpressure_sensors) < 1:
             raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.name)
 
+        lines = [f'{obj.name}=>{obj.filament_detected(0)}' for obj in backpressure_sensors]
+        self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
+
         try:
             # Handle case, where filament is already pressed against extruder
             if (toolhead_sensor.filament_detected(eventtime) and
@@ -194,7 +197,7 @@ class Kmms:
 
     def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()
-        lines = ["{}/{}={}".format(obj.name, k.upper(), v) for obj in self.active_path.objects for k, v in
+        lines = ["{}\t/\t{}\t={}".format(obj.name, k, v) for obj in self.active_path.objects for k, v in
                  obj.get_status(eventtime).items()]
         self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
 
