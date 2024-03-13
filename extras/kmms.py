@@ -140,67 +140,11 @@ class Kmms:
 
         drip_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
         self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
-        self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
-        return True
 
-    def move_to_join(self):
-        path = self.active_path
-        eventtime = self.reactor.monotonic()
-
-        if len(path) < 1:
-            raise self.printer.command_error("No filament is selected")
-
-        # Find all extruders
-        extruders = path.find_all(path.EXTRUDER)
-        if len(extruders) < 1:
-            raise self.printer.config_error("Path does not have toolhead extruder configured")
-
-        # Get toolhead extruder
-        toolhead_pos, toolhead_extruder = extruders.pop()
-
-        # Find current position
-        pos, _ = path.find_position(eventtime)
-        if pos < 0:
-            raise KmmsError("It seems to be empty")
-        if pos >= toolhead_pos:
-            self.gcode.respond_info("%s is already at toolhead" % path.name)
-            return False
-
-        # Desync all known extruders
-        self.logger.info('Desync extruders')
-        self.printer.send_event('kmms:desync_extruders')
-
-        # Activate last extruder before toolhead
-        if len(extruders) < 1:
-            raise self.printer.config_error("Path does not have any extruders configured")
-        drive_extruder_pos, drive_extruder = extruders.pop()
-        self.activate_extruder(drive_extruder.name)
-
-        # Sync all remaining extruders
-        for _, extruder in extruders:
-            self.sync_to_extruder(extruder.name, drive_extruder.name)
-
-        # Find last sensor before toolhead
-        toolhead_sensor_pos, toolhead_sensor = path.find_last(path.SENSOR, toolhead_pos)
-
-        if toolhead_sensor. is
-
-        # Find backpressure sensors between last toolhead and drive extruders
-        backpressure_names = [obj.name for _, obj in
-                              path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_sensor_pos)]
-
-        # Move to toolhead
-        # TODO this can be handled with static distances later
-        if toolhead_sensor is None and len(backpressure_names) < 1:
-            raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.name)
-
-        drip_completion = self.endstop.start([toolhead_sensor.name] + backpressure_names)
-        self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
+        # TODO create some sort of coords system
         self.set_position(0)
         self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
-
         self.gcode.respond_info("KMMS: Moved %.1f mm" % self.get_position())
-
         return True
 
     def get_position(self):
