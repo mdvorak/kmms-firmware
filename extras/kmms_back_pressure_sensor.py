@@ -6,6 +6,11 @@
 import logging
 
 import extras.filament_switch_sensor
+from configfile import ConfigWrapper
+from gcode import GCodeDispatch
+from klippy import Printer
+from reactor import Reactor
+
 from . import kmms_filament_switch_sensor
 
 ADC_REPORT_TIME = 0.015
@@ -15,8 +20,12 @@ TOLERANCE = 0.01
 
 
 class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
+    printer: Printer
+    reactor: Reactor
+    gcode: GCodeDispatch
+
     # noinspection PyMissingConstructor
-    def __init__(self, config):
+    def __init__(self, config: ConfigWrapper):
         # NOTE we inherit SwitchSensor, but we don't call its constructor at all
 
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
@@ -38,7 +47,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
         adc_report_time = config.getfloat('adc_report_time', ADC_REPORT_TIME, above=0.)
         adc_sample_time = config.getfloat('adc_sample_time', ADC_SAMPLE_TIME, above=0.)
-        adc_sample_count = config.getint('adc_sample_count', ADC_SAMPLE_COUNT, min=1)
+        adc_sample_count = config.getint('adc_sample_count', ADC_SAMPLE_COUNT, minval=1)
 
         ppins = self.printer.lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
