@@ -59,6 +59,8 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
         self.gcode.register_mux_command("SET_BACK_PRESSURE", "SENSOR", self.name,
                                         self.cmd_SET_BACK_PRESSURE, desc=self.cmd_SET_BACK_PRESSURE_help)
+        self.gcode.register_mux_command("QUERY_BACK_PRESSURE", "SENSOR", self.name,
+                                        self.cmd_QUERY_BACK_PRESSURE, desc=self.cmd_QUERY_BACK_PRESSURE_help)
 
     def _handle_ready(self):
         self.min_event_systime = self.reactor.monotonic() + 2.
@@ -100,8 +102,13 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
     def cmd_SET_BACK_PRESSURE(self, gcmd):
         self.min = max(0, min(1, gcmd.get_float('MIN', self.min)))
         self.target = max(0, min(1, gcmd.get_float('TARGET', self.target)))
-        self.runout_helper.sensor_enabled = gcmd.get_int('ENABLE', self.runout_helper.sensor_enabled)
+        self.runout_helper.cmd_SET_FILAMENT_SENSOR(gcmd)
 
+        self.cmd_QUERY_BACK_PRESSURE(gcmd)
+
+    cmd_QUERY_BACK_PRESSURE_help = "Query back-pressure sensor status"
+
+    def cmd_QUERY_BACK_PRESSURE(self, gcmd):
         status = ["{}={}".format(k.upper(), v) for k, v in self.get_status(self.reactor.monotonic())]
         gcmd.respond_info("Back-pressure sensor %s: %s" % (self.name, status))
 
