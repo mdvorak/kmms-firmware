@@ -97,6 +97,8 @@ class Kmms:
                 raise self.printer.config_error(
                     "Cannot complete load sequence, there is no filament sensor after %s" % self.path[pos].full_name)
 
+        self.gcode.respond_info("KMMS: Next sensor is '%s'" % next_sensor.full_name)
+
         # Perform move
         self._activate_extruders(extruders)
         drip_completion = self.endstop.start([next_sensor.full_name])

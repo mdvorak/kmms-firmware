@@ -142,6 +142,7 @@ class KmmsExtruder:
     cmd_ACTIVATE_EXTRUDER_help = "Change the active extruder"
 
     def cmd_ACTIVATE_EXTRUDER(self, gcmd):
+        gcmd.respond_info("Activating extruder %s" % (self.full_name,))
         self.activate()
 
 
