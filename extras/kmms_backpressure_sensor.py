@@ -43,6 +43,11 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         # Read config
         self.min = config.getfloat('min', minval=0, maxval=1)
         self.target = config.getfloat('target', minval=0, maxval=1)
+        adc_pin = config.get('adc')
+        self.invert = adc_pin.startswith('!')
+        if self.invert:
+            adc_pin = adc_pin.lstrip('!')
+
         self.last_value = self.last_pressure = .0
 
         adc_report_time = config.getfloat('adc_report_time', ADC_REPORT_TIME, above=0.)
@@ -50,7 +55,7 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
         adc_sample_count = config.getint('adc_sample_count', ADC_SAMPLE_COUNT, minval=1)
 
         ppins = self.printer.lookup_object('pins')
-        self.mcu_adc = ppins.setup_pin('adc', config.get('adc'))
+        self.mcu_adc = ppins.setup_pin('adc', adc_pin)
         self.mcu_adc.setup_minmax(adc_sample_time, adc_sample_count)
         self.mcu_adc.setup_adc_callback(adc_report_time, self.adc_callback)
 
@@ -83,15 +88,15 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
     def adc_callback(self, read_time, read_value):
         eventtime = self.mcu_adc.get_mcu().print_time_to_clock(read_time)
-        self.last_value = read_value
-        pressure = read_value - self.target
+        self.last_value = read_value if not self.invert else (1. - read_value)
+        pressure = self.last_value - self.target
 
         if eventtime < self.min_event_systime:
             return
 
         if self.runout_helper.sensor_enabled:
             self.logger.debug('%.1f: adc=%.3f pressure=%.3f', eventtime, self.last_value, pressure)
-        self.runout_helper.note_filament_present(read_value >= self.min)
+        self.runout_helper.note_filament_present(self.last_value >= self.min)
 
         if abs(pressure - self.last_pressure) >= TOLERANCE:
             self.last_pressure = pressure
