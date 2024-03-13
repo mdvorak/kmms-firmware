@@ -25,7 +25,6 @@ class EventsRunoutHelper:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
-        self.printer.load_object(config, 'pause_resume')
 
         self.full_name = config.get_name()
         self.name = name

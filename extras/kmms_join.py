@@ -28,21 +28,32 @@ class Join(object):
         # Read config
         self.filament_switch = self._define_filament_switch_sensor(config, self.name, config.get('filament_switch_pin'))
 
-        available_switch_pins = config.getlist('available_switch_pins')
-        self.available_switch_pin_names = [self._available_switch_name(i)
-                                           for i in range(len(available_switch_pins))]
-        self.available_switch_list = [self._define_filament_switch_sensor(config, name, pin) for name, pin in
-                                      zip(self.available_switch_pin_names, available_switch_pins)]
+        available_switch_pins = config.getlist('available_switch_pins', None)
+        if available_switch_pins:
+            self.count = len(available_switch_pins)
+            self.available_switch_pin_names = [self._available_switch_name(i)
+                                               for i in range(self.count)]
+            self.available_switch_list = [self._define_filament_switch_sensor(config, name, pin) for name, pin in
+                                          zip(self.available_switch_pin_names, available_switch_pins)]
+
+            count = config.getint('count', self.count)
+            if count != self.count:
+                raise self.printer.config_error(
+                    "When using available_switch_pins, count must be either same or omitted")
+        else:
+            self.count = config.getint('count')
 
     def get_filament_detected(self):
         return self.filament_switch.runout_helper.filament_present
 
     def get_filament_available(self):
-        return [fs.runout_helper.filament_present for fs in self.available_switch_list]
+        if self.available_switch_list is not None:
+            return [fs.runout_helper.filament_present for fs in self.available_switch_list]
+        else:
+            return None
 
     def get_status(self, eventtime):
-        return {
-            'filament_detected': self.get_filament_detected(),
+        return self.filament_switch.get_status(eventtime) | {
             'filament_available': self.get_filament_available(),
         }
 
@@ -54,8 +65,6 @@ class Join(object):
 
         config.fileconfig.add_section(section)
         config.fileconfig.set(section, "switch_pin", switch_pin)
-        config.fileconfig.set(section, "pause_on_runout", 0)
-        config.fileconfig.set(section, "event_delay", 0.1)
 
         return self.printer.load_object(config, section)
 

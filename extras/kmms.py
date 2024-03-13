@@ -25,6 +25,7 @@ class KmmsObject:
     EXTRUDER = 2
     SYNCING_EXTRUDER = 4
     BACKPRESSURE = 8 | SENSOR
+    JOIN = 16
 
     def __init__(self, obj):
         self.obj = obj
@@ -33,8 +34,11 @@ class KmmsObject:
 
         # Build flags
         self.flags = self.NONE
-        if 'filament_detected' in obj.get_status(reactor.Reactor.NEVER):
+        status = obj.get_status(reactor.Reactor.NEVER)
+        if 'filament_detected' in status:
             self.flags |= self.SENSOR
+        if 'filament_available' in status:
+            self.flags |= self.JOIN
         if hasattr(obj, 'move'):
             self.flags |= self.EXTRUDER
         if hasattr(obj, 'sync_to_extruder'):
@@ -91,8 +95,7 @@ class KmmsPath:
         return [(i, obj) for i, obj in enumerate(self.objects[start:stop]) if obj.has_flag(flag)]
 
     def find_last(self, flag: int, start: int, stop=0) -> (int, Any):
-        # TODO debug log
-        self.logger.info('Finding last %d from %d to %s', flag, start, stop)
+        self.logger.debug('Finding last %d from %d to %s', flag, start, stop)
         for i in reversed(range(stop, start)):
             obj = self.objects[i]
             if obj.has_flag(flag):
