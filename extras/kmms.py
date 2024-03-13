@@ -74,7 +74,7 @@ class Kmms:
 
         # Load paths
         self.paths = dict((n.removeprefix('kmms_path '), m) for n, m in self.printer.lookup_objects('kmms_path'))
-        del self.paths['']
+        self.paths.pop('', None)
         self.active_path = self.paths['spool_0']
 
     def _handle_filament_insert(self, eventtime, full_name):
