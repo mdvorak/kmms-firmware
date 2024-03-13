@@ -131,7 +131,7 @@ class Kmms:
             # Handle case, where filament is already pressed against extruder
             if (toolhead_sensor.filament_detected(eventtime) and
                     all(bp.filament_detected(eventtime) for bp in backpressure_sensors)):
-                self.gcode.respond_info("%s is already at toolhead" % path.name)
+                self.gcode.respond_info("%s seems to be at toolhead" % path.name)
                 return True
 
             # Activate extruders
