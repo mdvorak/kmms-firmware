@@ -103,11 +103,9 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
             'min': round(self.min, 3),
             'target': round(self.target, 3),
             'last_value': round(self.last_value, 3),
-            'pressure': round(self.last_pressure, 3)
+            'pressure': round(self.last_pressure, 3),
+            'temperature': round(self.last_value * 100., 2)
         }
-
-    def get_temp(self, eventtime):
-        return round(self.last_value * 100., 2), round(self.target * 100., 2)
 
     def setup_callback(self, temperature_callback):
         self.temperature_callback = temperature_callback
