@@ -189,7 +189,7 @@ class Kmms:
         drip_completion = self.endstop.start([toolhead_sensor.name] + backpressure_names)
         self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
         self.set_position(0)
-        self.toolhead.drip_move(self.relative_pos(980), 300, drip_completion)  # TODO speed and pos
+        self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
 
         self.gcode.respond_info("KMMS: Moved %.1f mm" % self.get_position())
 
