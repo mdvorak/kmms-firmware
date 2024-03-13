@@ -124,17 +124,23 @@ class Kmms:
         toolhead_sensor_pos, toolhead_sensor = path.find_last(path.SENSOR, toolhead_pos)
 
         # Find backpressure sensors between last toolhead and drive extruders
-        backpressure_names = [obj.name for _, obj in
-                              path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_sensor_pos)]
+        backpressure_sensors = [bp for _, bp in
+                                path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_sensor_pos)]
 
         # Move to toolhead
         # TODO this can be handled with static distances later
-        if toolhead_sensor is None and len(backpressure_names) < 1:
+        if toolhead_sensor is None and len(backpressure_sensors) < 1:
             raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.name)
 
-        drip_completion = self.endstop.start([toolhead_sensor.name] + backpressure_names)
+        # Handle case, where filament is already pressed against extruder
+        if (toolhead_sensor.filament_detected(eventtime) and
+                all(bp.filament_detected(eventtime) for bp in backpressure_sensors)):
+            self.gcode.respond_info("%s is already at toolhead" % path.name)
+            return True
+
+        drip_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
         self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
-        self.toolhead.drip_move(self.relative_pos(980), 300, drip_completion)  # TODO speed and pos
+        self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
         return True
 
     def move_to_join(self):
@@ -176,6 +182,8 @@ class Kmms:
 
         # Find last sensor before toolhead
         toolhead_sensor_pos, toolhead_sensor = path.find_last(path.SENSOR, toolhead_pos)
+
+        if toolhead_sensor. is
 
         # Find backpressure sensors between last toolhead and drive extruders
         backpressure_names = [obj.name for _, obj in
