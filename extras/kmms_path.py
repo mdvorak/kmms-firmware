@@ -21,6 +21,8 @@ class KmmsObject:
         self.flags = KmmsPath.NONE
         if 'filament_detected' in status:
             self.flags |= KmmsPath.SENSOR
+        if 'pressure' in status:
+            self.flags |= KmmsPath.BACKPRESSURE
         if hasattr(obj, 'move'):
             self.flags |= KmmsPath.EXTRUDER
         if hasattr(obj, 'sync_to_extruder'):

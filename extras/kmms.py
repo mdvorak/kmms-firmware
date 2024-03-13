@@ -198,9 +198,9 @@ class Kmms:
 
     def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()
-        lines = ["{}\t/\t{}\t={}".format(obj.name, k, v) for obj in self.active_path.objects for k, v in
-                 obj.get_status(eventtime).items()]
-        self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
+        lines = ["{}\t/\t{}\t=\t{}".format(obj.name, k, v) for obj in self.active_path.objects for k, v in
+                 list(obj.get_status(eventtime).items()) + [('flags', obj.flags)]]
+        self.gcode.respond_info("KMMS %s:\n    %s" % (self.active_path.name, '\n    '.join(lines),))
 
 
 def load_config(config):
