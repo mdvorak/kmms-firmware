@@ -107,8 +107,6 @@ class KmmsExtruder:
             self.logger.info("Extruder already active")
             return
 
-        self.logger.info("Activating extruder")
-
         self.toolhead.flush_step_generation()
         self._configure_extruder_stepper(self.trapq, self.last_position)
         self.toolhead.set_extruder(self, self.last_position)

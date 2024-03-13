@@ -125,7 +125,7 @@ class Kmms:
 
         # Find backpressure sensors between last toolhead and drive extruders
         backpressure_sensors = [bp for _, bp in
-                                path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_sensor_pos)]
+                                path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
 
         # Move to toolhead
         # TODO this can be handled with static distances later
