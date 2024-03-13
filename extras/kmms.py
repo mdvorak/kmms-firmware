@@ -160,7 +160,8 @@ class Kmms:
             self.printer.send_event('kmms:desync_extruders')
             self.activate_extruder(toolhead_extruder.name)
             self.set_position(toolhead_extruder.obj.last_position)
-            for _, extruder in extruders + [drive_extruder]:
+            # TODO do it better
+            for _, extruder in extruders + [(-1, drive_extruder)]:
                 self.sync_to_extruder(extruder.name, drive_extruder.name)
 
     def get_position(self):
