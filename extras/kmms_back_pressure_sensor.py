@@ -59,13 +59,14 @@ class KmmsBackPressureSensor(extras.filament_switch_sensor.SwitchSensor):
 
     def adc_callback(self, read_time, read_value):
         eventtime = self.mcu_adc.get_mcu().print_time_to_clock(read_time)
+        self.last_value = read_value
+        pressure = read_value - self.target
+
         if eventtime < self.min_event_systime:
             return
 
-        self.last_value = read_value
-        pressure = read_value - self.target
-        self.logger.debug('%.1f: adc=%.3f pressure=%.3f', eventtime, self.last_value, pressure)
-
+        if self.runout_helper.sensor_enabled:
+            self.logger.debug('%.1f: adc=%.3f pressure=%.3f', eventtime, self.last_value, pressure)
         self.runout_helper.note_filament_present(read_value >= self.min)
 
         if abs(pressure - self.last_pressure) >= TOLERANCE:

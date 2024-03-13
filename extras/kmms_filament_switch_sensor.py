@@ -37,6 +37,7 @@ class EventsRunoutHelper:
         # Internal state
         self.filament_present = False
         self.sensor_enabled = True
+        self.min_event_systime = self.reactor.NEVER
 
         # Register commands and event handlers
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
@@ -50,6 +51,7 @@ class EventsRunoutHelper:
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+        self.min_event_systime = self.reactor.monotonic() + 2.
 
     def _runout_event_handler(self, eventtime):
         self._exec_event('kmms:filament_runout', eventtime, self.full_name)
@@ -68,7 +70,7 @@ class EventsRunoutHelper:
         eventtime = self.reactor.monotonic()
 
         # Ignore if disabled
-        if not self.sensor_enabled:
+        if eventtime < self.min_event_systime or not self.sensor_enabled:
             return
 
         # Perform filament action associated with status change (if any)
