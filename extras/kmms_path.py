@@ -65,34 +65,32 @@ class KmmsPath:
         self.name = config.get_name().split()[-1]
 
         self.path = list(filter(None, (p.strip() for p in config.getlist('path', sep='\n'))))
+        self._names = {self.full_name}
         self._items = []
 
+        self.printer.register_event_handler("kmms:init", self._handle_init)
+
+    def _handle_init(self):
         # Load objects
         for obj_name in self.path:
             self.lookup_object(obj_name)
 
-        # Register validation
-        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+    def _append(self, item: KmmsPathItem):
+        if item.name in self._names:
+            raise self.printer.config_error("'%s' already contains '%s'" % (self.full_name, item.name))
 
-    def _handle_ready(self):
-        # Validate
-        used = set()
-        for i in self.get_path_items():
-            if i.name in used:
-                raise self.printer.config_error("'%s' has duplicate object '%s'" % (self.full_name, i.name))
-            used.add(i.name)
+        self.logger.info('Adding object %s', item.name)
+        self._names.add(item.name)
+        self._items.append(item)
 
     def add_object(self, obj):
-        if obj is self:
-            raise self.printer.config_error("Trying to add self to '%s'" % self.full_name)
-
-        wrapper = KmmsPathItem(obj)
-        self.logger.info('Adding object %s', wrapper.name)
-        self._items.append(wrapper)
+        item = KmmsPathItem(obj)
+        self._append(item)
 
         # If obj is another path, explode it
-        if wrapper.has_flag(self.PATH):
-            self._items.extend(obj.get_path_items())
+        if item.has_flag(self.PATH):
+            for nested in obj.get_path_items():
+                self._append(nested)
 
     def lookup_object(self, name):
         self.add_object(self.printer.lookup_object(name.strip()))

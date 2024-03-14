@@ -81,13 +81,16 @@ class Kmms:
                           if n != 'kmms_path')
         self.active_path = self.paths['spool_0']
 
+        # Init
+        self.printer.send_event('kmms:init')
+
         # TODO testing code
         ffi_main, ffi_lib = chelper.get_ffi()
         self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
 
         self._active_mcu_trsyncs = dict()
-        self.logger.info('self.active_path.get_objects=' + self.active_path.get_objects())
-        self.logger.info('self.active_path.get_objects EXTRUDER=' + self.active_path.get_objects(self.path.EXTRUDER))
+        self.logger.info('self.active_path.get_objects=%s' % self.active_path.get_objects())
+        self.logger.info('self.active_path.get_objects EXTRUDER=%s' % self.active_path.get_objects(self.path.EXTRUDER))
         for extruder in self.active_path.get_objects(self.path.EXTRUDER):
             stepper = extruder.extruder_stepper.stepper
             mcu = stepper.get_mcu()
