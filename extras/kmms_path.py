@@ -67,11 +67,20 @@ class KmmsPath:
         self.path = list(filter(None, (p.strip() for p in config.getlist('path', sep='\n'))))
         self._items = []
 
+        # Load objects
+        for obj_name in self.path:
+            self.lookup_object(obj_name)
+
+        # Register validation
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
     def _handle_ready(self):
-        for obj_name in self.path:
-            self.lookup_object(obj_name)
+        # Validate
+        used = set()
+        for i in self.get_path_items():
+            if i.name in used:
+                raise self.printer.config_error("'%s' has duplicate object '%s'" % (self.full_name, i.name))
+            used.add(i.name)
 
     def add_object(self, obj):
         if obj is self:
@@ -84,13 +93,6 @@ class KmmsPath:
         # If obj is another path, explode it
         if wrapper.has_flag(self.PATH):
             self._items.extend(obj.get_path_items())
-
-        # Validate
-        used = set()
-        for i in self.get_path_items():
-            if i.get_object() in used:
-                raise self.printer.config_error("'%s' has duplicate object '%s'" % (self.full_name, i.name))
-            used.add(i.get_object())
 
     def lookup_object(self, name):
         self.add_object(self.printer.lookup_object(name.strip()))
