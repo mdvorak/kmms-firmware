@@ -206,11 +206,13 @@ class Kmms:
             endstop_names = [toolhead_sensor.name] + [bp.name for bp in backpressure_sensors]
 
             self.toolhead.flush_step_generation()
-            self.toolhead.dwell(0.001)
 
             start_time = self.toolhead.get_last_move_time()
             move_completion = self.endstop.start(start_time, endstop_names)
             initial_pos = drive_extruder.get_object().find_past_position(start_time)
+
+            self.toolhead.flush_step_generation()
+            self.toolhead.dwell(0.001)
 
             self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
 
