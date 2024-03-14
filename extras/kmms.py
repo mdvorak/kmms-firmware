@@ -143,8 +143,11 @@ class Kmms:
             self.printer.send_event('kmms:desync')
             # drive_extruder.obj.set_last_position(0)
             self._activate_extruder(drive_extruder.name)
+            active_extruders = [self.toolhead.get_extruder()]
+
             for _, extruder in extruders:
                 self._sync_to_extruder(extruder.name, drive_extruder.name)
+                active_extruders.append(extruder.obj)
 
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
@@ -158,8 +161,15 @@ class Kmms:
             self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, drip_completion)  # TODO pos
 
             move_end_print_time = self.toolhead.get_last_move_time()
-            mcu = self.get_extruder_mcu(self.toolhead.get_extruder())
-            endstop_hit = drip_completion.wait(mcu.print_time_to_clock(move_end_print_time))
+            move_end_clock = (self.get_mcu_stepper(active_extruders[0])
+                              .get_mcu().print_time_to_clock(move_end_print_time))
+
+            endstop_hit = drip_completion.wait(move_end_clock)
+
+            # This is critical, otherwise stepcompress errors will occur
+            for e in active_extruders:
+                self.get_mcu_stepper(e).note_homing_end()
+
             self.toolhead.flush_step_generation()
 
             self.gcode.respond_info(
@@ -204,8 +214,8 @@ class Kmms:
             'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
 
     @staticmethod
-    def get_extruder_mcu(extruder):
-        return extruder.extruder_stepper.stepper.get_mcu()
+    def get_mcu_stepper(extruder):
+        return extruder.extruder_stepper.stepper
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
