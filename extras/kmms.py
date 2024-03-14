@@ -178,7 +178,7 @@ class Kmms:
                 trsync.start(print_time, report_offset,
                              move_completion, TRSYNC_TIMEOUT)
 
-            etrsync = self._active_mcu_trsyncs[0]
+            etrsync = next(iter(self._active_mcu_trsyncs.values()))
             ffi_main, ffi_lib = chelper.get_ffi()
             self.logger.info('trdispatch_start')
             ffi_lib.trdispatch_start(self._trdispatch, etrsync.REASON_HOST_REQUEST)
