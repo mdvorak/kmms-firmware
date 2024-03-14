@@ -49,6 +49,7 @@ class Kmms:
     gcode: GCodeDispatch
     toolhead: ToolHead
     paths: dict[str, KmmsPath]
+    active_path: KmmsPath
 
     def __init__(self, config):
         self.logger = logging.getLogger(config.get_name().replace(' ', '.'))
@@ -92,7 +93,7 @@ class Kmms:
             raise self.printer.command_error("No filament is selected")
 
         # Find all extruders
-        extruders = path.find_all(path.EXTRUDER)
+        extruders = path.find_path_items(path.EXTRUDER)
         if len(extruders) < 1:
             raise self.printer.config_error(
                 "Path '%s' does not have toolhead extruder configured" % self.active_path.name)
@@ -101,7 +102,7 @@ class Kmms:
         toolhead_pos, toolhead_extruder = extruders.pop()
 
         # Find current position
-        pos, _ = path.find_position(eventtime)
+        pos, _ = path.find_path_position(eventtime)
         if pos < 0:
             raise KmmsError("It seems to be empty")
         if pos >= toolhead_pos:
@@ -117,11 +118,11 @@ class Kmms:
         drive_extruder_pos, drive_extruder = extruders.pop()
 
         # Find last sensor before toolhead
-        toolhead_sensor_pos, toolhead_sensor = path.find_last(path.SENSOR, toolhead_pos)
+        toolhead_sensor_pos, toolhead_sensor = path.find_path_last(path.SENSOR, toolhead_pos)
 
         # Find backpressure sensors between last toolhead and drive extruders
         backpressure_sensors = [bp for _, bp in
-                                path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
+                                path.find_path_items(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
 
         # Move to toolhead
         # TODO this can be handled with static distances later
@@ -129,7 +130,7 @@ class Kmms:
             raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.name)
 
         lines = [f'{obj.name}=>{obj.filament_detected(0)}' for _, obj in
-                 path.find_all(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
+                 path.find_path_items(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
         self.gcode.respond_info("KMMS:\n    %s" % '\n    '.join(lines))
 
         try:
@@ -147,7 +148,7 @@ class Kmms:
 
             for _, extruder in extruders:
                 self._sync_to_extruder(extruder.name, drive_extruder.name)
-                active_extruders.append(extruder.obj)
+                active_extruders.append(extruder.get_object())
 
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
@@ -193,7 +194,7 @@ class Kmms:
         return pos
 
     def activate_path_extruders(self):
-        extruders = [e for _, e in self.active_path.find_all(self.path.EXTRUDER)]
+        extruders = self.active_path.get_objects(self.path.EXTRUDER)
         if len(extruders) < 1:
             raise self.printer.config_error(
                 "Path '%s' does not have toolhead extruder configured" % self.active_path.name)
@@ -225,8 +226,8 @@ class Kmms:
 
     def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()
-        lines = ["{}\t/\t{}\t=\t{}".format(obj.name, k, v) for obj in self.active_path.objects for k, v in
-                 list(obj.get_status(eventtime).items()) + [('flags', obj.flags)]]
+        lines = ["{}\t/\t{}\t=\t{}".format(i.name, k, v) for i in self.active_path.get_path_items() for k, v in
+                 list(i.get_status(eventtime).items()) + [('flags', i.flags)]]
         self.gcode.respond_info("KMMS %s:\n    %s" % (self.active_path.name, '\n    '.join(lines),))
 
 
