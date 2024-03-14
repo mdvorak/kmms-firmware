@@ -18,6 +18,7 @@ class KmmsError(Exception):
     pass
 
 
+# noinspection SpellCheckingInspection
 class KmmsVirtualEndstop:
     reactor: Reactor
 
@@ -25,9 +26,24 @@ class KmmsVirtualEndstop:
         self.reactor = printer.get_reactor()
         self.waiting = (self.reactor.completion(), [])
 
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
+        self._trsyncs = [MCU_trsync(mcu, self._trdispatch) for _, mcu in printer.lookup_objects(module='mcu')]
+        self._trsyncs_map = {trsync.get_mcu(): trsync for trsync in self._trsyncs}
+        self._main_trsync = self._trsyncs[0]
+
         printer.register_event_handler("kmms:filament_insert", self._handle_filament_insert)
 
-    def start(self, names) -> ReactorCompletion:
+    def _handle_filament_insert(self, eventtime, full_name):
+        completion, names = self.waiting
+        if full_name in names and not completion.test():
+            completion.complete(full_name)
+
+    def add_stepper(self, stepper):
+        stepper_mcu = stepper.get_mcu()
+        self._trsyncs_map[stepper_mcu].add_stepper(stepper)
+
+    def start(self, print_time, names) -> ReactorCompletion:
         completion = self.reactor.completion()
 
         prev, _ = self.waiting
@@ -37,12 +53,24 @@ class KmmsVirtualEndstop:
         if not prev.test():
             prev.complete(None)
 
+        for i, trsync in enumerate(self._trsyncs):
+            report_offset = float(i) / len(self._trsyncs)
+            trsync.start(print_time, report_offset,
+                         completion, TRSYNC_TIMEOUT)
+
+        ffi_main, ffi_lib = chelper.get_ffi()
+        ffi_lib.trdispatch_start(self._trdispatch, self._main_trsync.REASON_HOST_REQUEST)
+
         return completion
 
-    def _handle_filament_insert(self, eventtime, full_name):
-        completion, names = self.waiting
-        if full_name in names and not completion.test():
-            completion.complete(full_name)
+    def stop(self):
+        ffi_main, ffi_lib = chelper.get_ffi()
+        ffi_lib.trdispatch_stop(self._trdispatch)
+        return [trsync.stop() for trsync in self._trsyncs]
+
+    def wait(self, print_time):
+        eventtime = self._main_trsync.get_mcu().print_time_to_clock(print_time)
+        return self.waiting[0].wait(eventtime)
 
 
 class Kmms:
@@ -58,8 +86,8 @@ class Kmms:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
-        self.endstop = KmmsVirtualEndstop(self.printer)
         self.path = self.printer.load_object(config, 'kmms_path')
+        self.endstop = KmmsVirtualEndstop(self.printer)
 
         # Read configuration
         self.max_velocity = config.getfloat('max_velocity', above=0.)
@@ -81,26 +109,13 @@ class Kmms:
                           if n != 'kmms_path')
         self.active_path = self.paths['spool_0']
 
-        # Init
+        # Init - this will populate path objects
         self.printer.send_event('kmms:init')
 
-        # TODO testing code
-        ffi_main, ffi_lib = chelper.get_ffi()
-        self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
-
-        self._active_mcu_trsyncs = dict()
-        self.logger.info('self.active_path.get_objects=%s' % self.active_path.get_objects())
-        self.logger.info('self.active_path.get_objects EXTRUDER=%s' % self.active_path.get_objects(self.path.EXTRUDER))
-        for extruder in self.active_path.get_objects(self.path.EXTRUDER):
-            stepper = extruder.extruder_stepper.stepper
-            mcu = stepper.get_mcu()
-
-            mcu_trsync = self._active_mcu_trsyncs.get(mcu.get_name(), None)
-            if mcu_trsync is None:
-                self._active_mcu_trsyncs[mcu.get_name()] = mcu_trsync = MCU_trsync(mcu, self._trdispatch)
-            mcu_trsync.add_stepper(stepper)
-
-        self.logger.info('self._active_mcu_trsyncs=%s' % list(self._active_mcu_trsyncs.keys()))
+        # Register steppers to endstop
+        for path in self.paths.values():
+            for extruder in path.get_objects(self.path.EXTRUDER):
+                self.endstop.add_stepper(extruder.extruder_stepper.stepper)
 
     def _handle_filament_insert(self, eventtime, full_name):
         pass
@@ -175,20 +190,9 @@ class Kmms:
 
             self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
 
-            move_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
-
-            # TODO test
+            endstop_names = [toolhead_sensor.name] + [bp.name for bp in backpressure_sensors]
             print_time = self.toolhead.get_last_move_time()
-            for i, trsync in enumerate(self._active_mcu_trsyncs.values()):
-                report_offset = float(i) / len(self._active_mcu_trsyncs)
-                self.logger.info('trsync start mcu=%s oid=%d', trsync.get_mcu().get_name(), trsync.get_oid())
-                trsync.start(print_time, report_offset,
-                             move_completion, TRSYNC_TIMEOUT)
-
-            etrsync = next(iter(self._active_mcu_trsyncs.values()))
-            ffi_main, ffi_lib = chelper.get_ffi()
-            self.logger.info('trdispatch_start')
-            ffi_lib.trdispatch_start(self._trdispatch, etrsync.REASON_HOST_REQUEST)
+            move_completion = self.endstop.start(print_time, endstop_names)
 
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
@@ -198,17 +202,9 @@ class Kmms:
             initial_pos = self.get_position()
             self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
 
-            move_end_print_time = self.toolhead.get_last_move_time()
-            move_end_clock = (self.get_mcu_stepper(active_extruders[0])
-                              .get_mcu().print_time_to_clock(move_end_print_time))
-
-            endstop_hit = move_completion.wait(move_end_clock)
-            self.logger.info('trdispatch_stop')
-            ffi_lib.trdispatch_stop(self._trdispatch)
-            self.logger.info('trsync.stop')
-            res = [trsync.stop() for trsync in self._active_mcu_trsyncs]
-            self.logger.info('trsync res=%s' % res)
-
+            # Wait for move to finish
+            endstop_hit = self.endstop.wait(self.toolhead.get_last_move_time())
+            self.endstop.stop()
             self.toolhead.flush_step_generation()
 
             self.gcode.respond_info(
