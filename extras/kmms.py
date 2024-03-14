@@ -83,6 +83,7 @@ class KmmsVirtualEndstop:
 
     def wait(self, home_end_time):
         eventtime = self._main_trsync.get_mcu().print_time_to_clock(home_end_time)
+        logging.info('Wainting until %.3f (home_end_time=%.3f)' % (eventtime, home_end_time,))
         self._main_trsync.set_home_end_time(home_end_time)
         return self.waiting[0].wait(eventtime)
 
@@ -218,6 +219,7 @@ class Kmms:
             end_time = self.toolhead.print_time
             self.endstop.stop()
             self.toolhead.flush_step_generation()
+            logging.info('current_print_time=%.3f' % (end_time,))
 
             final_pos = drive_extruder.get_object().find_past_position(end_time)
 
