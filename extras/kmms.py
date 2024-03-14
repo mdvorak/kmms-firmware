@@ -56,7 +56,7 @@ class Kmms:
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         self.endstop = KmmsVirtualEndstop(self.printer)
-        self.printer.load_object(config, 'kmms_path')
+        self.path = self.printer.load_object(config, 'kmms_path')
 
         # Read configuration
         self.max_velocity = config.getfloat('max_velocity', above=0.)
@@ -94,7 +94,8 @@ class Kmms:
         # Find all extruders
         extruders = path.find_all(path.EXTRUDER)
         if len(extruders) < 1:
-            raise self.printer.config_error("Path does not have toolhead extruder configured")
+            raise self.printer.config_error(
+                "Path '%s' does not have toolhead extruder configured" % self.active_path.name)
 
         # Get toolhead extruder
         toolhead_pos, toolhead_extruder = extruders.pop()
@@ -112,7 +113,7 @@ class Kmms:
 
         # Find last extruder before toolhead
         if len(extruders) < 1:
-            raise self.printer.config_error("Path does not have any extruders configured")
+            raise self.printer.config_error("Path '%s' does not have any extruders configured" % self.active_path.name)
         drive_extruder_pos, drive_extruder = extruders.pop()
 
         # Find last sensor before toolhead
@@ -139,34 +140,34 @@ class Kmms:
                 return True
 
             # Activate extruders
-            self.printer.send_event('kmms:desync_extruders')
-            drive_extruder.obj.set_last_position(0)
-            self.activate_extruder(drive_extruder.name)
+            self.printer.send_event('kmms:desync')
+            # drive_extruder.obj.set_last_position(0)
+            self._activate_extruder(drive_extruder.name)
             for _, extruder in extruders:
-                self.sync_to_extruder(extruder.name, drive_extruder.name)
+                self._sync_to_extruder(extruder.name, drive_extruder.name)
 
-            # Safety wait
-            self.toolhead.dwell(0.001)
             self.toolhead.flush_step_generation()
+            self.toolhead.dwell(0.001)
 
             drip_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
             self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
 
             # TODO create some sort of coords system
-            self.set_position(0)
-            self.toolhead.drip_move(self.relative_pos(100), 300, drip_completion)  # TODO speed and pos
+            # self.set_position(0)
+            initial_pos = self.get_position()
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, drip_completion)  # TODO pos
+
+            move_end_print_time = self.toolhead.get_last_move_time()
+            mcu = self.get_extruder_mcu(self.toolhead.get_extruder())
+            endstop_hit = drip_completion.wait(mcu.print_time_to_clock(move_end_print_time))
             self.toolhead.flush_step_generation()
-            self.gcode.respond_info("KMMS: Moved %.1f mm" % self.get_position())
+
+            self.gcode.respond_info(
+                "KMMS: Moved %.1f mm, hit %s endstop" % (self.get_position() - initial_pos, endstop_hit))
             return True
         finally:
-            # Always activate final extruder
-            # TODO do it in the callback?
-            self.printer.send_event('kmms:desync_extruders')
-            self.activate_extruder(toolhead_extruder.name)
-            self.set_position(toolhead_extruder.obj.last_position)
-            # TODO do it better
-            for _, extruder in extruders + [(-1, drive_extruder)]:
-                self.sync_to_extruder(extruder.name, drive_extruder.name)
+            # Make sure expected extruder is always activated
+            self.toolhead.register_lookahead_callback(lambda print_time: self.activate_path_extruders())
 
     def get_position(self):
         return self.toolhead.get_position()[3]
@@ -181,20 +182,36 @@ class Kmms:
         pos[3] += e
         return pos
 
-    def activate_extruder(self, extruder_name: str):
+    def activate_path_extruders(self):
+        extruders = [e for _, e in self.active_path.find_all(self.path.EXTRUDER)]
+        if len(extruders) < 1:
+            raise self.printer.config_error(
+                "Path '%s' does not have toolhead extruder configured" % self.active_path.name)
+        toolhead_extruder = extruders.pop()
+
+        self.printer.send_event('kmms:desync')
+        self._activate_extruder(toolhead_extruder.name)
+        for e in extruders:
+            self._sync_to_extruder(e.name, toolhead_extruder.name)
+
+    def _activate_extruder(self, extruder_name: str):
         self.logger.info('Activating extruder %s', extruder_name)
         self.gcode.run_script_from_command('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
 
-    def sync_to_extruder(self, extruder_name: str, motion_queue: str):
+    def _sync_to_extruder(self, extruder_name: str, motion_queue: str):
         self.logger.info('Syncing extruder %s to %s', extruder_name, motion_queue)
         self.gcode.run_script_from_command(
             'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
+
+    @staticmethod
+    def get_extruder_mcu(extruder):
+        return extruder.extruder_stepper.stepper.get_mcu()
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
             self.move_to_toolhead()
         except KmmsError as e:
-            self.gcode.respond_info('KMMS Error: %s', e)
+            self.gcode.respond_info('KMMS Error: %s' % e)
 
     def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()

@@ -23,16 +23,8 @@ class KmmsExtruder:
 
         self.extruder_stepper = ExtruderStepper(config)
         self.generate_steps = self.extruder_stepper.stepper.generate_steps
+        self.mcu = self.extruder_stepper.stepper.get_mcu()
         self.tmc_module = None
-
-        global_config = config.getsection('kmms')
-
-        def config_getfloat(name, **kwargs):
-            ret = config.getfloat(name, default=None, **kwargs)
-            return ret if ret is not None else global_config.getfloat(name, **kwargs)
-
-        self.max_velocity = config_getfloat('max_velocity', above=0.)
-        self.max_accel = config_getfloat('max_accel', above=0.)
         self.last_position = 0.
 
         ffi_main, ffi_lib = chelper.get_ffi()
@@ -40,9 +32,18 @@ class KmmsExtruder:
         self.trapq_append = ffi_lib.trapq_append
         self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
 
+        global_config = config.getsection('kmms')
+
+        def global_getfloat(name, **kwargs):
+            ret = config.getfloat(name, default=None, **kwargs)
+            return ret if ret is not None else global_config.getfloat(name, **kwargs)
+
+        self.max_velocity = global_getfloat('max_velocity', above=0.)
+        self.max_accel = global_getfloat('max_accel', above=0.)
+
         # Event handlers
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
-        self.printer.register_event_handler("kmms:desync_extruders", self._desync_extruders)
+        self.printer.register_event_handler("kmms:desync", self._desync_extruder)
 
         # TODO ExtruderStepper now registers commands on its own, but only with a short name - we should unregister it
         gcode = self.printer.lookup_object('gcode')
@@ -68,7 +69,7 @@ class KmmsExtruder:
 
         self.toolhead.register_step_generator(self.generate_steps)
 
-    def _desync_extruders(self):
+    def _desync_extruder(self):
         # Ignore if activated
         if self.toolhead.get_extruder() is self:
             return
