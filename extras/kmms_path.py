@@ -114,7 +114,7 @@ class KmmsPath:
         self.logger.info('Found position at %d', result[0])
         return result
 
-    def find_path_items(self, flag: int, start=0, stop=None) -> list[(int, KmmsPathItem)]:
+    def find_path_items(self, flag=NONE, start=0, stop=None) -> list[(int, KmmsPathItem)]:
         self.logger.debug('Finding all %d from %d to %s', flag, start, stop)
         return [(start + i, obj) for i, obj in enumerate(self._items[start:stop]) if obj.has_flag(flag)]
 

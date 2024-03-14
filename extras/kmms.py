@@ -244,14 +244,14 @@ class Kmms:
         return pos
 
     def activate_path_extruders(self, from_command=False):
-        extruders = self.active_path.get_objects(self.path.EXTRUDER)
+        extruders = self.active_path.find_path_items(self.path.EXTRUDER)
         if len(extruders) < 1:
             raise self.printer.config_error(
                 "Path '%s' does not have toolhead extruder configured" % self.active_path.name)
-        toolhead_extruder = extruders.pop()
+        _, toolhead_extruder = extruders.pop()
 
         self.printer.send_event('kmms:desync')
-        self._activate_extruder_train(toolhead_extruder.name, [e.name for e in extruders], from_command=from_command)
+        self._activate_extruder_train(toolhead_extruder.name, [e.name for _, e in extruders], from_command=from_command)
 
     def _activate_extruder_train(self, extruder_name: str, synced_extruders: list[str], from_command=False):
         self.logger.info("Activating '%s', syncing '%s'", extruder_name, ','.join(synced_extruders))
