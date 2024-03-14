@@ -5,9 +5,11 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 
+import chelper
 from extras.kmms_path import KmmsPath
 from gcode import GCodeDispatch
 from klippy import Printer
+from mcu import MCU_trsync, TRSYNC_TIMEOUT
 from reactor import Reactor, ReactorCompletion
 from toolhead import ToolHead
 
@@ -78,6 +80,20 @@ class Kmms:
         self.paths = dict((n.removeprefix('kmms_path '), m) for n, m in self.printer.lookup_objects('kmms_path'))
         self.paths.pop('', None)
         self.active_path = self.paths['spool_0']
+
+        # TODO testing code
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
+
+        self._active_mcu_trsyncs = dict()
+        for extruder in self.active_path.get_objects(self.path.EXTRUDER):
+            stepper = extruder.extruder_stepper.stepper
+            mcu = stepper.get_mcu()
+
+            mcu_trsync = self._active_mcu_trsyncs.get(mcu.get_name(), None)
+            if mcu_trsync is None:
+                self._active_mcu_trsyncs[mcu.get_name()] = mcu_trsync = MCU_trsync(mcu, self._trdispatch)
+            mcu_trsync.add_stepper(stepper)
 
     def _handle_filament_insert(self, eventtime, full_name):
         pass
@@ -150,26 +166,41 @@ class Kmms:
                 self._sync_to_extruder(extruder.name, drive_extruder.name)
                 active_extruders.append(extruder.get_object())
 
+            self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
+
+            move_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
+
+            # TODO test
+            print_time = self.toolhead.get_last_move_time()
+            for i, trsync in enumerate(self._active_mcu_trsyncs.values()):
+                report_offset = float(i) / len(self._active_mcu_trsyncs)
+                self.logger.info('trsync start mcu=%s oid=%d', trsync.get_mcu().get_name(), trsync.get_oid())
+                trsync.start(print_time, report_offset,
+                             move_completion, TRSYNC_TIMEOUT)
+
+            etrsync = self._active_mcu_trsyncs[0]
+            ffi_main, ffi_lib = chelper.get_ffi()
+            self.logger.info('trdispatch_start')
+            ffi_lib.trdispatch_start(self._trdispatch, etrsync.REASON_HOST_REQUEST)
+
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
-
-            drip_completion = self.endstop.start([toolhead_sensor.name] + [bp.name for bp in backpressure_sensors])
-            self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
 
             # TODO create some sort of coords system
             # self.set_position(0)
             initial_pos = self.get_position()
-            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, drip_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
 
             move_end_print_time = self.toolhead.get_last_move_time()
             move_end_clock = (self.get_mcu_stepper(active_extruders[0])
                               .get_mcu().print_time_to_clock(move_end_print_time))
 
-            endstop_hit = drip_completion.wait(move_end_clock)
-
-            # This is critical, otherwise stepcompress errors will occur
-            for e in active_extruders:
-                self.get_mcu_stepper(e).note_homing_end()
+            endstop_hit = move_completion.wait(move_end_clock)
+            self.logger.info('trdispatch_stop')
+            ffi_lib.trdispatch_stop(self._trdispatch)
+            self.logger.info('trsync.stop')
+            res = [trsync.stop() for trsync in self._active_mcu_trsyncs]
+            self.logger.info('trsync res=%s' % res)
 
             self.toolhead.flush_step_generation()
 
