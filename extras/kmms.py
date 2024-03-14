@@ -20,6 +20,11 @@ class KmmsError(Exception):
 
 # noinspection SpellCheckingInspection
 class KmmsVirtualEndstop:
+    REASON_ENDSTOP_HIT = MCU_trsync.REASON_ENDSTOP_HIT
+    REASON_COMMS_TIMEOUT = MCU_trsync.REASON_COMMS_TIMEOUT
+    REASON_HOST_REQUEST = MCU_trsync.REASON_HOST_REQUEST
+    REASON_PAST_END_TIME = MCU_trsync.REASON_PAST_END_TIME
+
     reactor: Reactor
 
     def __init__(self, printer: Printer):
@@ -59,17 +64,25 @@ class KmmsVirtualEndstop:
                          completion, TRSYNC_TIMEOUT)
 
         ffi_main, ffi_lib = chelper.get_ffi()
-        ffi_lib.trdispatch_start(self._trdispatch, self._main_trsync.REASON_HOST_REQUEST)
+        ffi_lib.trdispatch_start(self._trdispatch, self.REASON_HOST_REQUEST)
 
         return completion
 
     def stop(self):
         ffi_main, ffi_lib = chelper.get_ffi()
         ffi_lib.trdispatch_stop(self._trdispatch)
-        return [trsync.stop() for trsync in self._trsyncs]
+        res = [trsync.stop() for trsync in self._trsyncs]
 
-    def wait(self, print_time):
-        eventtime = self._main_trsync.get_mcu().print_time_to_clock(print_time)
+        if any([r == self.REASON_COMMS_TIMEOUT for r in res]):
+            return self.REASON_COMMS_TIMEOUT
+        if any([r == self.REASON_ENDSTOP_HIT for r in res]):
+            return self.REASON_ENDSTOP_HIT
+
+        return max(res)
+
+    def wait(self, home_end_time):
+        eventtime = self._main_trsync.get_mcu().print_time_to_clock(home_end_time)
+        self._main_trsync.set_home_end_time(home_end_time)
         return self.waiting[0].wait(eventtime)
 
 
@@ -181,7 +194,6 @@ class Kmms:
 
             # Activate extruders
             self.printer.send_event('kmms:desync')
-            # drive_extruder.obj.set_last_position(0)
             self._activate_extruder(drive_extruder.name)
             active_extruders = [self.toolhead.get_extruder()]
 
@@ -192,24 +204,26 @@ class Kmms:
             self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
 
             endstop_names = [toolhead_sensor.name] + [bp.name for bp in backpressure_sensors]
-            print_time = self.toolhead.get_last_move_time()
-            move_completion = self.endstop.start(print_time, endstop_names)
 
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
 
-            # TODO create some sort of coords system
-            # self.set_position(0)
-            initial_pos = self.get_position()
+            start_time = self.toolhead.get_last_move_time()
+            move_completion = self.endstop.start(start_time, endstop_names)
+            initial_pos = drive_extruder.get_object().find_past_position(start_time)
+
             self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
             endstop_hit = self.endstop.wait(self.toolhead.get_last_move_time())
+            end_time = self.toolhead.print_time
             self.endstop.stop()
             self.toolhead.flush_step_generation()
 
+            final_pos = drive_extruder.get_object().find_past_position(end_time)
+
             self.gcode.respond_info(
-                "KMMS: Moved %.1f mm, hit %s endstop" % (self.get_position() - initial_pos, endstop_hit))
+                "KMMS: Moved %.3f mm, hit %s endstop" % (final_pos - initial_pos, endstop_hit))
             return True
         finally:
             # Make sure expected extruder is always activated
