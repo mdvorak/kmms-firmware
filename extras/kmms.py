@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+from typing import Iterable
 
 import chelper
 from extras.kmms_path import KmmsPath
@@ -137,7 +138,7 @@ class Kmms:
     def _handle_filament_runout(self, eventtime, full_name):
         pass
 
-    def move_to_toolhead(self):
+    def move_to_toolhead(self, from_command=False):
         path = self.active_path
         eventtime = self.reactor.monotonic()
 
@@ -194,12 +195,8 @@ class Kmms:
 
             # Activate extruders
             self.printer.send_event('kmms:desync')
-            self._activate_extruder(drive_extruder.name)
-            active_extruders = [self.toolhead.get_extruder()]
-
-            for _, extruder in extruders:
-                self._sync_to_extruder(extruder.name, drive_extruder.name)
-                active_extruders.append(extruder.get_object())
+            self._activate_extruder_train(drive_extruder.name, [extruder.name for _, extruder in extruders],
+                                          from_command=from_command)
 
             self.gcode.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.name)
 
@@ -244,7 +241,7 @@ class Kmms:
         pos[3] += e
         return pos
 
-    def activate_path_extruders(self):
+    def activate_path_extruders(self, from_command=False):
         extruders = self.active_path.get_objects(self.path.EXTRUDER)
         if len(extruders) < 1:
             raise self.printer.config_error(
@@ -252,33 +249,34 @@ class Kmms:
         toolhead_extruder = extruders.pop()
 
         self.printer.send_event('kmms:desync')
-        self._activate_extruder(toolhead_extruder.name)
-        for e in extruders:
-            self._sync_to_extruder(e.name, toolhead_extruder.name)
+        self._activate_extruder_train(toolhead_extruder.name, [e.name for e in extruders], from_command=from_command)
 
-    def _activate_extruder(self, extruder_name: str):
-        self.logger.info('Activating extruder %s', extruder_name)
-        self.gcode.run_script_from_command('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name)
+    def _activate_extruder_train(self, extruder_name: str, synced_extruders: list[str], from_command=False):
+        self.logger.info("Activating '%s', syncing '%s'", extruder_name, ','.join(synced_extruders))
 
-    def _sync_to_extruder(self, extruder_name: str, motion_queue: str):
-        self.logger.info('Syncing extruder %s to %s', extruder_name, motion_queue)
-        self.gcode.run_script_from_command(
-            'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
+        commands = ['ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name]
+        commands.extend(
+            'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (e, extruder_name) for e in synced_extruders)
+
+        if from_command:
+            self.gcode.run_script_from_command('\n'.join(commands))
+        else:
+            self.gcode.run_script('\n'.join(commands))
 
     def cmd_KMMS_ACTIVATE_EXTRUDERS(self, gcmd):
-        self.activate_path_extruders()
+        self.activate_path_extruders(from_command=True)
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
-            self.move_to_toolhead()
+            self.move_to_toolhead(from_command=True)
         except KmmsError as e:
-            self.gcode.respond_info('KMMS Error: %s' % e)
+            gcmd.respond_info('KMMS Error: %s' % e)
 
     def cmd_KMMS_STATUS(self, gcmd):
         eventtime = self.reactor.monotonic()
         lines = ["{}\t/\t{}\t=\t{}".format(i.name, k, v) for i in self.active_path.get_path_items() for k, v in
                  list(i.get_status(eventtime).items()) + [('flags', i.flags)]]
-        self.gcode.respond_info("KMMS %s:\n    %s" % (self.active_path.name, '\n    '.join(lines),))
+        gcmd.respond_info("KMMS %s:\n    %s" % (self.active_path.name, '\n    '.join(lines),))
 
 
 def load_config(config):
