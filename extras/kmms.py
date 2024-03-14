@@ -222,13 +222,14 @@ class Kmms:
             logging.info('current_print_time=%.3f' % (end_time,))
 
             final_pos = drive_extruder.get_object().find_past_position(end_time)
+            self.toolhead.dwell(0.001)
 
             self.gcode.respond_info(
                 "KMMS: Moved %.3f mm, hit %s endstop" % (final_pos - initial_pos, endstop_hit))
             return True
         finally:
             # Make sure expected extruder is always activated
-            self.toolhead.register_lookahead_callback(lambda print_time: self.activate_path_extruders())
+            self.reactor.register_callback(lambda _: self.activate_path_extruders())
 
     def get_position(self):
         return self.toolhead.get_position()[3]
