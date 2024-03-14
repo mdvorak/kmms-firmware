@@ -98,6 +98,7 @@ class Kmms:
         self.printer.register_event_handler("kmms:filament_insert", self._handle_filament_runout)
         self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_insert)
 
+        self.gcode.register_command("KMMS_ACTIVATE_EXTRUDERS", self.cmd_KMMS_ACTIVATE_EXTRUDERS)
         self.gcode.register_command("KMMS_PRELOAD", self.cmd_KMMS_PRELOAD)
         self.gcode.register_command("KMMS_STATUS", self.cmd_KMMS_STATUS)
 
@@ -248,9 +249,8 @@ class Kmms:
         self.gcode.run_script_from_command(
             'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (extruder_name, motion_queue))
 
-    @staticmethod
-    def get_mcu_stepper(extruder):
-        return extruder.extruder_stepper.stepper
+    def cmd_KMMS_ACTIVATE_EXTRUDERS(self, gcmd):
+        self.activate_path_extruders()
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
