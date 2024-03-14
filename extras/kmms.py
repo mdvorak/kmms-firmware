@@ -77,8 +77,8 @@ class Kmms:
         self.toolhead = self.printer.lookup_object('toolhead')
 
         # Load paths
-        self.paths = dict((n.removeprefix('kmms_path '), m) for n, m in self.printer.lookup_objects('kmms_path'))
-        self.paths.pop('', None)
+        self.paths = dict((n.removeprefix('kmms_path '), m) for n, m in self.printer.lookup_objects('kmms_path')
+                          if n != 'kmms_path')
         self.active_path = self.paths['spool_0']
 
         # TODO testing code
@@ -86,6 +86,8 @@ class Kmms:
         self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
 
         self._active_mcu_trsyncs = dict()
+        self.logger.info('self.active_path.get_objects=' + self.active_path.get_objects())
+        self.logger.info('self.active_path.get_objects EXTRUDER=' + self.active_path.get_objects(self.path.EXTRUDER))
         for extruder in self.active_path.get_objects(self.path.EXTRUDER):
             stepper = extruder.extruder_stepper.stepper
             mcu = stepper.get_mcu()
@@ -94,6 +96,8 @@ class Kmms:
             if mcu_trsync is None:
                 self._active_mcu_trsyncs[mcu.get_name()] = mcu_trsync = MCU_trsync(mcu, self._trdispatch)
             mcu_trsync.add_stepper(stepper)
+
+        self.logger.info('self._active_mcu_trsyncs=%s' % list(self._active_mcu_trsyncs.keys()))
 
     def _handle_filament_insert(self, eventtime, full_name):
         pass
