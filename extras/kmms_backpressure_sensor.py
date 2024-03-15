@@ -13,7 +13,7 @@ from reactor import Reactor
 
 from . import kmms_filament_switch_sensor
 
-ADC_REPORT_TIME = 0.100
+ADC_REPORT_TIME = 0.015
 ADC_SAMPLE_TIME = 0.001
 ADC_SAMPLE_COUNT = 6
 TOLERANCE = 0.01
