@@ -70,6 +70,10 @@ class KmmsVirtualEndstop:
         return completion
 
     def stop(self):
+        completion, _ = self.waiting
+        if not completion.test():
+            completion.complete(None)
+
         # ffi_main, ffi_lib = chelper.get_ffi()
         # ffi_lib.trdispatch_stop(self._trdispatch)
         # res = [trsync.stop() for trsync in self._trsyncs]
@@ -219,6 +223,7 @@ class Kmms:
             endstop_hit = self.endstop.wait(start_time + 1)
             end_time = self.toolhead.print_time
             self.endstop.stop()
+            self.toolhead.dwell(0.001)
             self.toolhead.flush_step_generation()
             logging.info('current_print_time=%.3f' % (end_time,))
 
