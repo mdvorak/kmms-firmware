@@ -59,27 +59,28 @@ class KmmsVirtualEndstop:
         if not prev.test():
             prev.complete(None)
 
-        for i, trsync in enumerate(self._trsyncs):
-            report_offset = float(i) / len(self._trsyncs)
-            trsync.start(print_time, report_offset,
-                         completion, TRSYNC_TIMEOUT)
-
-        ffi_main, ffi_lib = chelper.get_ffi()
-        ffi_lib.trdispatch_start(self._trdispatch, self.REASON_HOST_REQUEST)
+        # for i, trsync in enumerate(self._trsyncs):
+        #     report_offset = float(i) / len(self._trsyncs)
+        #     trsync.start(print_time, report_offset,
+        #                  completion, TRSYNC_TIMEOUT)
+        #
+        # ffi_main, ffi_lib = chelper.get_ffi()
+        # ffi_lib.trdispatch_start(self._trdispatch, self.REASON_HOST_REQUEST)
 
         return completion
 
     def stop(self):
-        ffi_main, ffi_lib = chelper.get_ffi()
-        ffi_lib.trdispatch_stop(self._trdispatch)
-        res = [trsync.stop() for trsync in self._trsyncs]
-
-        if any([r == self.REASON_COMMS_TIMEOUT for r in res]):
-            return self.REASON_COMMS_TIMEOUT
-        if any([r == self.REASON_ENDSTOP_HIT for r in res]):
-            return self.REASON_ENDSTOP_HIT
-
-        return max(res)
+        # ffi_main, ffi_lib = chelper.get_ffi()
+        # ffi_lib.trdispatch_stop(self._trdispatch)
+        # res = [trsync.stop() for trsync in self._trsyncs]
+        #
+        # if any([r == self.REASON_COMMS_TIMEOUT for r in res]):
+        #     return self.REASON_COMMS_TIMEOUT
+        # if any([r == self.REASON_ENDSTOP_HIT for r in res]):
+        #     return self.REASON_ENDSTOP_HIT
+        #
+        # return max(res)
+        return None
 
     def wait(self, home_end_time):
         eventtime = self._main_trsync.get_mcu().print_time_to_clock(home_end_time)
@@ -212,10 +213,10 @@ class Kmms:
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
 
-            self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(200), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
-            endstop_hit = self.endstop.wait(self.toolhead.get_last_move_time())
+            endstop_hit = self.endstop.wait(start_time + 1000)
             end_time = self.toolhead.print_time
             self.endstop.stop()
             self.toolhead.flush_step_generation()
