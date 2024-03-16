@@ -213,10 +213,10 @@ class Kmms:
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
 
-            self.toolhead.drip_move(self.relative_pos(200), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
-            endstop_hit = self.endstop.wait(start_time + 1000)
+            endstop_hit = self.endstop.wait(start_time + 1)
             end_time = self.toolhead.print_time
             self.endstop.stop()
             self.toolhead.flush_step_generation()
