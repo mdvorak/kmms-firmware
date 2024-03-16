@@ -158,8 +158,8 @@ class Kmms:
 
         # Find current position
         pos, _ = path.find_path_position(eventtime)
-        if pos < 0:
-            raise KmmsError("It seems to be empty")
+        # if pos < 0:
+        #     raise KmmsError("It seems to be empty")
         if pos >= toolhead_pos:
             self.gcode.respond_info("%s is already at toolhead" % path.name)
             return False
