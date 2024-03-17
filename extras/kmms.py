@@ -246,6 +246,8 @@ class Kmms:
             self.respond_info("flush_step_generation 2 %.3f" % get_extruder_stepper_position(
                 drive_extruder.get_object().extruder_stepper))
             self.toolhead.flush_step_generation()
+            self.respond_info("flush_step_generation 3 %.3f" % get_extruder_stepper_position(
+                drive_extruder.get_object().extruder_stepper))
 
             distance = final_pos - initial_pos
             # TODO update path
