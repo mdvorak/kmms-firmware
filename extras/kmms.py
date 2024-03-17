@@ -242,6 +242,9 @@ class Kmms:
             # Make sure expected extruder is always activated
             self.reactor.register_callback(lambda _: self.activate_extruder(from_command=False))
             raise
+        finally:
+            self.respond_info("KMMS preload end")
+
 
     def get_position(self):
         return self.toolhead.get_position()[3]
