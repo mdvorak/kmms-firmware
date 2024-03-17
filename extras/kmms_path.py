@@ -7,13 +7,15 @@ from reactor import Reactor
 
 
 class KmmsPathItem:
-    name: str
+    DISTANCE_HISTORY = 5
+
+    distances: list[float]
 
     def __init__(self, obj):
         self.obj = obj
-        self.name = obj.get_name()
         self.get_status = obj.get_status
         self.get_name = obj.get_name
+        self.distances = []
 
         # Get fake status
         status = obj.get_status(Reactor.NEVER)
@@ -38,6 +40,15 @@ class KmmsPathItem:
         status = self.get_status(eventtime)
         return status['filament_detected'] if ('enabled' not in status or status['enabled']) else None
 
+    def note_distance(self, distance: float):
+        self.distances.append(distance)
+        if len(self.distances) > self.DISTANCE_HISTORY:
+            self.distances.pop(0)
+
+    def get_distance(self):
+        count = len(self.distances)
+        return sum(self.distances) / count if count else 0.
+
     def get_object(self):
         return self.obj
 
@@ -50,10 +61,10 @@ class KmmsPath:
 
     NONE = 0
     SENSOR = 1
-    EXTRUDER = 2
-    SYNCING_EXTRUDER = 4
-    BACKPRESSURE = 8 | SENSOR
-    PATH = 16
+    EXTRUDER = 1 << 1
+    SYNCING_EXTRUDER = 1 << 2
+    BACKPRESSURE = (1 << 3) | SENSOR
+    PATH = 1 << 4
 
     printer: Printer
     _items: list[KmmsPathItem]
@@ -106,8 +117,13 @@ class KmmsPath:
     def get_objects(self, flag=NONE, start=0, stop=None) -> list[object]:
         return [i.get_object() for i in self._items[start:stop] if i.has_flag(flag)]
 
+    def find_object(self, obj, start=0, stop=None) -> (int, Optional[KmmsPathItem]):
+        for i, item in enumerate(self._items):
+            if item is obj:
+                return i, item
+        return -1, None
+
     def find_path_position(self, eventtime) -> (int, Optional[KmmsPathItem]):
-        self.logger.debug('Finding current position')
         result = (-1, None)
         for i, obj in enumerate(self._items):
             filament_detected = obj.filament_detected(eventtime) if obj.has_flag(self.SENSOR) else None
@@ -116,7 +132,7 @@ class KmmsPath:
             elif filament_detected is not None:
                 # Stop on first empty sensor - this skips components that does not track filament
                 break
-        self.logger.info('Found position at %d', result[0])
+        self.logger.debug('Found position at %d', result[0])
         return result
 
     def find_path_items(self, flag=NONE, start=0, stop=None) -> list[(int, KmmsPathItem)]:
@@ -131,6 +147,9 @@ class KmmsPath:
         return -1, None
 
     def find_path_last(self, flag: int, start: int, stop=0) -> (int, Optional[KmmsPathItem]):
+        if start < stop:
+            raise ValueError('start must be >= stop')
+
         self.logger.debug('Finding last %d from %d to %s', flag, start, stop)
         for i in reversed(range(stop, start)):
             obj = self._items[i]

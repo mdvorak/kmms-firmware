@@ -30,7 +30,7 @@ class KmmsVirtualEndstop:
 
     def __init__(self, printer: Printer):
         self.reactor = printer.get_reactor()
-        self.waiting = (self.reactor.completion(), [])
+        self.waiting = (self.reactor.completion(), set())
 
         ffi_main, ffi_lib = chelper.get_ffi()
         self._trdispatch = ffi_main.gc(ffi_lib.trdispatch_alloc(), ffi_lib.free)
@@ -53,7 +53,7 @@ class KmmsVirtualEndstop:
         completion = self.reactor.completion()
 
         prev, _ = self.waiting
-        self.waiting = (completion, list(names))
+        self.waiting = (completion, set(names))
 
         # Make sure we don't leave anyone hanging
         if not prev.test():
@@ -88,7 +88,8 @@ class KmmsVirtualEndstop:
     def wait(self, home_end_time):
         eventtime = self._main_trsync.get_mcu().print_time_to_clock(home_end_time)
         logging.info('Wainting until %.3f (home_end_time=%.3f)' % (eventtime, home_end_time,))
-        self._main_trsync.set_home_end_time(home_end_time)
+        # We don't need this
+        # self._main_trsync.set_home_end_time(home_end_time)
         return self.waiting[0].wait(eventtime)
 
 
@@ -141,18 +142,16 @@ class Kmms:
     def _handle_activate_extruder(self):
         self.printer.send_event('kmms:desync')
 
-        extruder = self.toolhead.get_extruder()
-        path_extruders = self.active_path.get_objects(self.path.EXTRUDER)
-        try:
-            current = path_extruders.index(extruder)
-        except ValueError:
+        extruder_pos, extruder = self.active_path.find_object(self.toolhead.get_extruder())
+        if extruder is None:
             self.respond_info('Warning: Activated extruder, that is not part of current path, this might cause '
                               'filament to grind or to be stuck')
             return
 
         # Sync all up to active extruder
-        for e in path_extruders[:current]:
-            e.sync_to_extruder(extruder.get_name())
+        path_extruders = self.active_path.get_objects(self.path.EXTRUDER, stop=extruder_pos)
+        for e in path_extruders:
+            e.get_object().sync_to_extruder(extruder.get_name())
 
         # Activate other path elements
         # TODO
@@ -163,31 +162,25 @@ class Kmms:
     def _handle_filament_runout(self, eventtime, full_name):
         pass
 
-    def move_to_toolhead(self, from_command=False):
+    def _load_to(self, stop_pos: int, from_command=False):
         path = self.active_path
         eventtime = self.reactor.monotonic()
 
         if len(path) < 1:
             raise self.printer.command_error("No filament is selected")
 
-        # Find all extruders
-        extruders = path.find_path_items(path.EXTRUDER)
-        if len(extruders) < 1:
-            raise self.printer.config_error(
-                "Path '%s' does not have toolhead extruder configured" % path.get_name())
-
-        # Get toolhead extruder
-        toolhead_pos, toolhead_extruder = extruders.pop()
-
         # Find current position
         pos, _ = path.find_path_position(eventtime)
-        if pos >= toolhead_pos:
-            self.respond_info("%s is already at toolhead" % path.get_name())
+        if pos >= stop_pos:
             return False
 
-        # Find last extruder before toolhead
+        # Find all extruders
+        extruders = path.find_path_items(path.EXTRUDER, stop=stop_pos)
+
+        # Find last extruder before stop_pos
         if len(extruders) < 1:
-            raise self.printer.config_error("Path '%s' does not have any extruders configured" % path.get_name())
+            raise self.printer.config_error(
+                "Path '%s' does not have any extruders configured before %d" % path.get_name(), stop_pos)
         drive_extruder_pos, drive_extruder = extruders.pop()
 
         if pos < 0:
@@ -197,38 +190,34 @@ class Kmms:
                 self.respond_info(
                     "Warning: %s does not have any sensors before extruder configured, trying to load anyway")
 
-        # Find last sensor before toolhead
-        # Note that backpressure is also a sensor
-        toolhead_sensor_pos, toolhead_sensor = path.find_path_last(path.SENSOR, toolhead_pos)
+        # Find last sensor before toolhead and add it to endstop list
+        toolhead_sensor_pos, toolhead_sensor = path.find_path_last(path.SENSOR, stop_pos)
+        if toolhead_sensor is None:
+            # TODO this can be handled with static distances later
+            raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.get_name())
+        endstops = [toolhead_sensor]
 
-        # Find backpressure sensors between toolhead and drive extruders
-        backpressure_sensors = [bp for _, bp in
-                                path.find_path_items(path.BACKPRESSURE, drive_extruder_pos, toolhead_pos)]
+        # Find backpressure sensors, which can be used as an endstop as well
+        endstops.extend(s for _, s in path.find_path_items(path.BACKPRESSURE, drive_extruder_pos, stop_pos))
 
         # Move to toolhead
-        # TODO this can be handled with static distances later
-        if toolhead_sensor is None:
-            raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.get_name())
-
         try:
             # Handle case, where filament is already pressed against extruder
-            if (toolhead_sensor.filament_detected(eventtime) and
-                    all(bp.filament_detected(eventtime) for bp in backpressure_sensors)):
-                self.respond_info("%s seems to be at toolhead" % path.get_name())
+            if toolhead_sensor.filament_detected(eventtime):
+                self.respond_info("%s seems to be at toolhead already" % path.get_name())
                 return True
 
-            # Activate extruders
-            self.activate_extruder(drive_extruder, from_command=from_command)
-
             self.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.get_name())
+            endstop_names = [s.get_name() for s in endstops]
 
-            endstop_names = [toolhead_sensor.get_name()] + [bp.get_name() for bp in backpressure_sensors]
-
+            # Activate extruders
+            # Note that this also takes care of syncing all previous extruders from the path
+            self.activate_extruder(drive_extruder, from_command=from_command)
             self.toolhead.flush_step_generation()
 
             start_time = self.toolhead.get_last_move_time()
             move_completion = self.endstop.start(start_time, endstop_names)
-            initial_pos = drive_extruder.get_object().find_past_position(start_time)
+            initial_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
 
             self.toolhead.flush_step_generation()
             self.toolhead.dwell(0.001)
@@ -237,15 +226,15 @@ class Kmms:
 
             # Wait for move to finish
             endstop_hit = self.endstop.wait(self.toolhead.get_last_move_time())
-            end_time = self.toolhead.print_time
+            final_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
             self.endstop.stop()
             self.toolhead.flush_step_generation()
 
-            final_pos = drive_extruder.get_object().find_past_position(end_time)
-            self.toolhead.dwell(0.001)
+            distance = final_pos - initial_pos
+            # TODO update path
 
             self.respond_info(
-                "KMMS: Moved %.3f mm, hit %s endstop" % (final_pos - initial_pos, endstop_hit))
+                "KMMS: Moved %.3f mm, hit %s endstop" % (distance, endstop_hit))
 
             self.activate_extruder(from_command=from_command)
             return True
@@ -295,7 +284,8 @@ class Kmms:
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
-            self.move_to_toolhead(from_command=True)
+            toolhead_pos, _ = self.active_path.find_path_last(self.path.EXTRUDER, len(self.active_path))
+            self._load_to(toolhead_pos, from_command=True)
         except KmmsError as e:
             gcmd.respond_info('%s: %s' % (self.active_path.get_name(), e))
 
@@ -304,6 +294,12 @@ class Kmms:
         lines = ["{}\t/\t{}\t=\t{}".format(i.get_name(), k, v) for i in self.active_path.get_path_items() for k, v in
                  list(i.get_status(eventtime).items()) + [('flags', i.flags)]]
         gcmd.respond_info("%s:\n    %s" % (self.active_path.get_name(), '\n    '.join(lines),))
+
+
+def get_extruder_stepper_position(extruder_stepper):
+    stepper = extruder_stepper.stepper
+    mcu_position = stepper.get_mcu_position()
+    return stepper.mcu_to_commanded_position(mcu_position)
 
 
 def load_config(config):
