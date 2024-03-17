@@ -157,10 +157,10 @@ class Kmms:
         # TODO
 
     def _handle_filament_insert(self, eventtime, full_name):
-        pass
+        self.respond_info("filament_insert %s" % full_name)
 
     def _handle_filament_runout(self, eventtime, full_name):
-        pass
+        self.respond_info("filament_runout %s" % full_name)
 
     def _load_to(self, stop_pos: int, from_command=False):
         path = self.active_path
