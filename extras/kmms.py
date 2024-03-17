@@ -243,7 +243,8 @@ class Kmms:
             final_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
             self.respond_info("final_pos=%.3f" % final_pos)
             self.endstop.stop()
-            self.respond_info("flush_step_generation 2")
+            self.respond_info("flush_step_generation 2 %.3f" % get_extruder_stepper_position(
+                drive_extruder.get_object().extruder_stepper))
             self.toolhead.flush_step_generation()
 
             distance = final_pos - initial_pos
