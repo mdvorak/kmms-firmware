@@ -221,7 +221,9 @@ class Kmms:
             move_completion = self.endstop.start(start_time, endstop_names)
             self.respond_info("get_extruder_stepper_position")
 
-            drive_extruder.get_object().extruder_stepper.stepper._query_mcu_position()
+            st = drive_extruder.get_object().extruder_stepper.stepper
+            st._query_mcu_position()
+
             initial_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
             self.respond_info("initial_pos=%.3f" % initial_pos)
 
@@ -236,7 +238,7 @@ class Kmms:
                 return self.reactor.NEVER
 
             self.reactor.register_timer(test, eventtime + 1)
-            self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(400), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
             self.respond_info("wait")
