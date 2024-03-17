@@ -225,7 +225,7 @@ class Kmms:
             st = drive_extruder.get_object().extruder_stepper.stepper
             mr = self.printer.lookup_object('motion_report')
             ds = mr.steppers[st.get_name()]
-            ds_data, _ = ds.get_step_queue(st.get_mcu().print_time_to_clock(0),
+            ds_data, _ = ds.get_step_queue(st.get_mcu().print_time_to_clock(start_time - 10),
                                            st.get_mcu().print_time_to_clock(start_time))
             ds.log_steps(ds_data)
 
