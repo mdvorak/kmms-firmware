@@ -196,6 +196,9 @@ class KmmsEncoder:
                              eventtime, self.min_headroom)
             self.set_clog_detection_length(self.detection_length)
 
+    def get_name(self):
+        return self.full_name
+
     def get_clog_detection_length(self):
         return self.detection_length
 

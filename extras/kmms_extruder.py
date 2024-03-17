@@ -149,6 +149,8 @@ class KmmsExtruder:
         return move.max_cruise_v2
 
     def get_name(self):
+        # We intentionally return full name, as all commands use it here
+        # That is needed to avoid conflicts with stepper_extruder objects
         return self.full_name
 
     def get_heater(self):
@@ -165,7 +167,7 @@ class KmmsExtruder:
     cmd_ACTIVATE_EXTRUDER_help = "Change the active extruder"
 
     def cmd_ACTIVATE_EXTRUDER(self, gcmd):
-        gcmd.respond_info("Activating extruder %s" % (self.full_name,))
+        gcmd.respond_info("Activating extruder %s" % (self.get_name(),))
         self.activate()
 
     cmd_SET_E_ROTATION_DISTANCE_help = "Set extruder rotation distance"

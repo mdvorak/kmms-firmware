@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from configfile import ConfigWrapper
 from klippy import Printer
@@ -11,8 +11,9 @@ class KmmsPathItem:
 
     def __init__(self, obj):
         self.obj = obj
-        self.name = getattr(obj, 'full_name', None) or obj.name
+        self.name = obj.get_name()
         self.get_status = obj.get_status
+        self.get_name = obj.get_name
 
         # Get fake status
         status = obj.get_status(Reactor.NEVER)
@@ -41,7 +42,7 @@ class KmmsPathItem:
         return self.obj
 
     def __str__(self):
-        return self.name
+        return self.get_name()
 
 
 class KmmsPath:
@@ -76,12 +77,16 @@ class KmmsPath:
             self.lookup_object(obj_name)
 
     def _append(self, item: KmmsPathItem):
-        if item.name in self._names:
-            raise self.printer.config_error("'%s' already contains '%s'" % (self.full_name, item.name))
+        name = item.get_name()
+        if name in self._names:
+            raise self.printer.config_error("'%s' already contains '%s'" % (self.full_name, name))
 
-        self.logger.info('Adding object %s', item.name)
-        self._names.add(item.name)
+        self.logger.info('Adding object %s', name)
+        self._names.add(name)
         self._items.append(item)
+
+    def get_name(self):
+        return self.full_name
 
     def add_object(self, obj):
         item = KmmsPathItem(obj)

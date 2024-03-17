@@ -104,6 +104,9 @@ class Spool(object):
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
 
+    def get_name(self):
+        return self.full_name
+
     def get_status(self, eventtime):
         return {
             'status': self.last_status,

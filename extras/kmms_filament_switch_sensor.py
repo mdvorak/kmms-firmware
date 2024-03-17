@@ -65,6 +65,9 @@ class EventsRunoutHelper:
         self.logger.debug('Sending event %s', event)
         self.printer.send_event(event, *params)
 
+    def get_name(self):
+        return self.full_name
+
     def note_filament_present(self, is_filament_present):
         if is_filament_present == self.filament_present:
             return
