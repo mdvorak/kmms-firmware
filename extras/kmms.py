@@ -228,6 +228,7 @@ class Kmms:
             self.toolhead.dwell(0.001)
 
             self.respond_info("drip_move")
+            self.reactor.register_timer(lambda _: self.endstop.waiting[0].complete('TEST'), eventtime + 1)
             self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
