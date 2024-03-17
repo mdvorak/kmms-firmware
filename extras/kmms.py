@@ -220,7 +220,7 @@ class Kmms:
             self.respond_info("start_time = %.3f" % start_time)
             move_completion = self.endstop.start(start_time, endstop_names)
             self.respond_info("get_extruder_stepper_position")
-            self.set_position(0.)
+
             initial_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
             self.respond_info("initial_pos=%.3f" % initial_pos)
 
@@ -246,6 +246,10 @@ class Kmms:
             self.endstop.stop()
             self.respond_info("flush_step_generation 2 %.3f" % get_extruder_stepper_position(
                 drive_extruder.get_object().extruder_stepper))
+
+            # Force refresh
+            self.toolhead.set_position(self.toolhead.get_position())
+
             self.toolhead.flush_step_generation()
             self.respond_info("flush_step_generation 3 %.3f" % get_extruder_stepper_position(
                 drive_extruder.get_object().extruder_stepper))
