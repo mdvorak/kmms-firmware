@@ -2,6 +2,7 @@ import logging
 
 import chelper
 from configfile import ConfigWrapper
+from gcode import GCodeDispatch
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
 from klippy import Printer
 from toolhead import ToolHead
@@ -45,8 +46,14 @@ class KmmsExtruder:
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("kmms:desync", self._desync_extruder)
 
-        # TODO ExtruderStepper now registers commands on its own, but only with a short name - we should unregister it
         gcode = self.printer.lookup_object('gcode')
+
+        # Unregister commands registered by ExtruderStepper, to avoid errors and confusion
+        _delete_mux_command(gcode, "SET_PRESSURE_ADVANCE", "EXTRUDER", self.extruder_stepper.name)
+        _delete_mux_command(gcode, "SET_EXTRUDER_ROTATION_DISTANCE", "EXTRUDER", self.extruder_stepper.name)
+        _delete_mux_command(gcode, "SYNC_EXTRUDER_MOTION", "EXTRUDER", self.extruder_stepper.name)
+
+        # Register commands
         gcode.register_mux_command("ACTIVATE_EXTRUDER", "EXTRUDER",
                                    self.full_name, self.cmd_ACTIVATE_EXTRUDER, desc=self.cmd_ACTIVATE_EXTRUDER_help)
         gcode.register_mux_command("SET_E_ROTATION_DISTANCE", "EXTRUDER",
@@ -171,6 +178,14 @@ class KmmsExtruder:
     def cmd_SYNC_EXTRUDER_MOTION(self, gcmd):
         motion_queue = gcmd.get('MOTION_QUEUE', None)
         self.sync_to_extruder(motion_queue)
+
+
+def _delete_mux_command(gcode: GCodeDispatch, cmd: str, key: str, value: str):
+    prev = gcode.mux_commands.get(cmd)
+    if prev and prev[0] == key:
+        # Delete value from the list
+        # Note that value is not callback handler, but value of the parameter key
+        prev[1].pop(value, default=None)
 
 
 def load_config_prefix(config):
