@@ -117,7 +117,7 @@ class KmmsPath:
     def get_objects(self, flag=NONE, start=0, stop=None) -> list[object]:
         return [i.get_object() for i in self._items[start:stop] if i.has_flag(flag)]
 
-    def find_object(self, obj, start=0, stop=None) -> (int, Optional[KmmsPathItem]):
+    def find_path_item(self, obj, start=0, stop=None) -> (int, Optional[KmmsPathItem]):
         for i, item in enumerate(self._items[start:stop]):
             if item.get_object() is obj:
                 return start + i, item

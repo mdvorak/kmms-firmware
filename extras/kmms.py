@@ -142,16 +142,16 @@ class Kmms:
     def _handle_activate_extruder(self):
         self.printer.send_event('kmms:desync')
 
-        extruder_pos, extruder = self.active_path.find_object(self.toolhead.get_extruder())
+        extruder_pos, extruder = self.active_path.find_path_item(self.toolhead.get_extruder())
         if extruder is None:
             self.respond_info('Warning: Activated extruder, that is not part of current path, this might cause '
                               'filament to grind or to be stuck')
             return
 
         # Sync all up to active extruder
-        path_extruders = self.active_path.get_objects(self.path.EXTRUDER, stop=extruder_pos)
-        for e in path_extruders:
-            e.get_object().sync_to_extruder(extruder.get_name())
+        synced_extruders = self.active_path.get_objects(self.path.EXTRUDER, stop=extruder_pos)
+        for e in synced_extruders:
+            e.sync_to_extruder(extruder.get_name())
 
         # Activate other path elements
         # TODO
