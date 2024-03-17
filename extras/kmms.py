@@ -114,10 +114,11 @@ class Kmms:
 
         # Register event handlers
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
+        self.printer.register_event_handler("extruder:activate_extruder", self._handle_activate_extruder)
         self.printer.register_event_handler("kmms:filament_insert", self._handle_filament_runout)
         self.printer.register_event_handler("kmms:filament_runout", self._handle_filament_insert)
 
-        self.gcode.register_command("KMMS_ACTIVATE_EXTRUDERS", self.cmd_KMMS_ACTIVATE_EXTRUDERS)
+        self.gcode.register_command("KMMS_ACTIVATE_EXTRUDER", self.cmd_KMMS_ACTIVATE_EXTRUDER)
         self.gcode.register_command("KMMS_PRELOAD", self.cmd_KMMS_PRELOAD)
         self.gcode.register_command("KMMS_STATUS", self.cmd_KMMS_STATUS)
 
@@ -136,6 +137,25 @@ class Kmms:
         for path in self.paths.values():
             for extruder in path.get_objects(self.path.EXTRUDER):
                 self.endstop.add_stepper(extruder.extruder_stepper.stepper)
+
+    def _handle_activate_extruder(self):
+        self.printer.send_event('kmms:desync')
+
+        extruder = self.toolhead.get_extruder()
+        path_extruders = self.active_path.get_objects(self.path.EXTRUDER)
+        try:
+            current = path_extruders.index(extruder)
+        except ValueError:
+            self.gcode.respond_info('Warning: Activated extruder, that is not part of current path, this might cause '
+                                    'filament to grind or to be stuck')
+            return
+
+        # Sync all up to active extruder
+        for e in path_extruders[:current]:
+            e.sync_to_extruder(extruder.get_name())
+
+        # Activate other path elements
+        # TODO
 
     def _handle_filament_insert(self, eventtime, full_name):
         pass
@@ -230,10 +250,13 @@ class Kmms:
 
             self.gcode.respond_info(
                 "KMMS: Moved %.3f mm, hit %s endstop" % (final_pos - initial_pos, endstop_hit))
+
+            self.activate_extruder(from_command=from_command)
             return True
-        finally:
+        except Exception:
             # Make sure expected extruder is always activated
-            self.reactor.register_callback(lambda _: self.activate_path_extruders())
+            self.reactor.register_callback(lambda _: self.activate_extruder(from_command=False))
+            raise
 
     def get_position(self):
         return self.toolhead.get_position()[3]
@@ -248,31 +271,24 @@ class Kmms:
         pos[3] += e
         return pos
 
-    def activate_path_extruders(self, from_command=False):
-        extruders = self.active_path.find_path_items(self.path.EXTRUDER)
-        if len(extruders) < 1:
-            raise self.printer.config_error(
-                "Path '%s' does not have toolhead extruder configured" % self.active_path.get_name())
-        _, toolhead_extruder = extruders.pop()
-
-        self.printer.send_event('kmms:desync')
-        self._activate_extruder_train(toolhead_extruder.get_name(), [e.get_name() for _, e in extruders],
-                                      from_command=from_command)
-
-    def _activate_extruder_train(self, extruder_name: str, synced_extruders: list[str], from_command=False):
-        self.logger.info("Activating '%s', syncing '%s'", extruder_name, ','.join(synced_extruders))
-
-        commands = ['ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder_name]
-        commands.extend(
-            'SYNC_EXTRUDER_MOTION EXTRUDER="%s" MOTION_QUEUE="%s"' % (e, extruder_name) for e in synced_extruders)
-
+    def run_script(self, script, from_command=False):
         if from_command:
-            self.gcode.run_script_from_command('\n'.join(commands))
+            self.gcode.run_script_from_command(script)
         else:
-            self.gcode.run_script('\n'.join(commands))
+            self.gcode.run_script(script)
 
-    def cmd_KMMS_ACTIVATE_EXTRUDERS(self, gcmd):
-        self.activate_path_extruders(from_command=True)
+    def activate_extruder(self, from_command=False):
+        # Get last (toolhead) extruder
+        path = self.active_path
+        try:
+            extruder = path.get_objects(self.path.EXTRUDER).pop()
+        except IndexError:
+            raise self.printer.config_error("Path '%s' does not have toolhead extruder configured" % path.get_name())
+        # Activate it
+        self.run_script('ACTIVATE_EXTRUDER EXTRUDER="%s"' % extruder.get_name(), from_command=from_command)
+
+    def cmd_KMMS_ACTIVATE_EXTRUDER(self, gcmd):
+        self.activate_extruder(from_command=True)
 
     def cmd_KMMS_PRELOAD(self, gcmd):
         try:
