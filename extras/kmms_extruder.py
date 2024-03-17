@@ -184,10 +184,10 @@ class KmmsExtruder:
 
 def _delete_mux_command(gcode: GCodeDispatch, cmd: str, key: str, value: str):
     prev = gcode.mux_commands.get(cmd)
-    if prev and prev[0] == key:
+    if prev and prev[0] == key and value in prev[1]:
         # Delete value from the list
         # Note that value is not callback handler, but value of the parameter key
-        prev[1].pop(value, default=None)
+        del prev[1][value]
 
 
 def load_config_prefix(config):
