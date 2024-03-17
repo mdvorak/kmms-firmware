@@ -234,7 +234,11 @@ class Kmms:
                 return self.reactor.NEVER
 
             self.reactor.register_timer(test, eventtime + 1)
-            self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
+            self.toolhead.drip_move(self.relative_pos(100), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
             self.respond_info("wait")
