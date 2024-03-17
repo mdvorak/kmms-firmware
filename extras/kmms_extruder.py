@@ -75,7 +75,7 @@ class KmmsExtruder:
                 break
 
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.sk_extruder = ffi_main.gc(ffi_lib.cartesian_stepper_alloc('x'),
+        self.sk_extruder = ffi_main.gc(ffi_lib.cartesian_stepper_alloc(b'x'),
                                        ffi_lib.free)
         self.extruder_stepper.stepper.set_stepper_kinematics(self.sk_extruder)
 
