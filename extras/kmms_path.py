@@ -118,17 +118,17 @@ class KmmsPath:
         return [i.get_object() for i in self._items[start:stop] if i.has_flag(flag)]
 
     def find_object(self, obj, start=0, stop=None) -> (int, Optional[KmmsPathItem]):
-        for i, item in enumerate(self._items):
-            if item is obj:
-                return i, item
+        for i, item in enumerate(self._items[start:stop]):
+            if item.get_object() is obj:
+                return start + i, item
         return -1, None
 
     def find_path_position(self, eventtime) -> (int, Optional[KmmsPathItem]):
         result = (-1, None)
-        for i, obj in enumerate(self._items):
-            filament_detected = obj.filament_detected(eventtime) if obj.has_flag(self.SENSOR) else None
+        for i, item in enumerate(self._items):
+            filament_detected = item.filament_detected(eventtime) if item.has_flag(self.SENSOR) else None
             if filament_detected:
-                result = (i, obj)
+                result = (i, item)
             elif filament_detected is not None:
                 # Stop on first empty sensor - this skips components that does not track filament
                 break
@@ -141,9 +141,9 @@ class KmmsPath:
 
     def find_path_next(self, flag: int, start=0, stop=None) -> (int, Optional[KmmsPathItem]):
         self.logger.debug('Finding next %d from %d to %s', flag, start, stop)
-        for i, obj in enumerate(self._items[start:stop]):
-            if obj.has_flag(flag):
-                return start + i, obj
+        for i, item in enumerate(self._items[start:stop]):
+            if item.has_flag(flag):
+                return start + i, item
         return -1, None
 
     def find_path_last(self, flag: int, start: int, stop=0) -> (int, Optional[KmmsPathItem]):
@@ -152,9 +152,9 @@ class KmmsPath:
 
         self.logger.debug('Finding last %d from %d to %s', flag, start, stop)
         for i in reversed(range(stop, start)):
-            obj = self._items[i]
-            if obj.has_flag(flag):
-                return i, obj
+            item = self._items[i]
+            if item.has_flag(flag):
+                return i, item
         return -1, None
 
     def __getitem__(self, pos: int) -> Optional[KmmsPathItem]:

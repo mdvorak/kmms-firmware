@@ -194,7 +194,7 @@ class Kmms:
         toolhead_sensor_pos, toolhead_sensor = path.find_path_last(path.SENSOR, stop_pos)
         if toolhead_sensor is None:
             # TODO this can be handled with static distances later
-            raise KmmsError("KMMS: %s does not have any sensors before toolhead configured" % path.get_name())
+            raise KmmsError("%s does not have any sensors before toolhead configured" % path.get_name())
         endstops = [toolhead_sensor]
 
         # Find backpressure sensors, which can be used as an endstop as well
@@ -207,35 +207,45 @@ class Kmms:
                 self.respond_info("%s seems to be at toolhead already" % path.get_name())
                 return True
 
-            self.respond_info("KMMS: Moving to '%s'" % toolhead_sensor.get_name())
+            self.respond_info("Moving to '%s'" % toolhead_sensor.get_name())
             endstop_names = [s.get_name() for s in endstops]
 
             # Activate extruders
             # Note that this also takes care of syncing all previous extruders from the path
             self.activate_extruder(drive_extruder, from_command=from_command)
+            self.respond_info("flush_step_generation")
             self.toolhead.flush_step_generation()
 
             start_time = self.toolhead.get_last_move_time()
+            self.respond_info("start_time = %.3f" % start_time)
             move_completion = self.endstop.start(start_time, endstop_names)
+            self.respond_info("get_extruder_stepper_position")
             initial_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
+            self.respond_info("initial_pos=%.3f" % initial_pos)
 
             self.toolhead.flush_step_generation()
+            self.respond_info("dwell")
             self.toolhead.dwell(0.001)
 
+            self.respond_info("drip_move")
             self.toolhead.drip_move(self.relative_pos(500), self.max_velocity, move_completion)  # TODO pos
 
             # Wait for move to finish
+            self.respond_info("wait")
             endstop_hit = self.endstop.wait(self.toolhead.get_last_move_time())
+            self.respond_info("get_extruder_stepper_position")
             final_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
+            self.respond_info("final_pos=%.3f" % final_pos)
             self.endstop.stop()
+            self.respond_info("flush_step_generation 2")
             self.toolhead.flush_step_generation()
 
             distance = final_pos - initial_pos
             # TODO update path
 
-            self.respond_info(
-                "KMMS: Moved %.3f mm, hit %s endstop" % (distance, endstop_hit))
+            self.respond_info("Moved %.3f mm, hit %s endstop" % (distance, endstop_hit))
 
+            self.respond_info("activate_extruder 2")
             self.activate_extruder(from_command=from_command)
             return True
         except Exception:
@@ -243,8 +253,7 @@ class Kmms:
             self.reactor.register_callback(lambda _: self.activate_extruder(from_command=False))
             raise
         finally:
-            self.respond_info("KMMS preload end")
-
+            self.respond_info("preload end")
 
     def get_position(self):
         return self.toolhead.get_position()[3]
@@ -260,7 +269,7 @@ class Kmms:
         return pos
 
     def respond_info(self, msg):
-        self.gcode.respond_info(msg)
+        self.gcode.respond_info("KMMS %.3f: %s" % (self.reactor.monotonic(), msg))
 
     def run_script(self, script, from_command=False):
         if from_command:
