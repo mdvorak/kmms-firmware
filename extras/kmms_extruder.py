@@ -74,6 +74,11 @@ class KmmsExtruder:
                 self.tmc_module = module
                 break
 
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self.sk_extruder = ffi_main.gc(ffi_lib.cartesian_stepper_alloc('x'),
+                                       ffi_lib.free)
+        self.extruder_stepper.stepper.set_stepper_kinematics(self.sk_extruder)
+
         self.toolhead.register_step_generator(self.generate_steps)
 
     def _desync_extruder(self):
