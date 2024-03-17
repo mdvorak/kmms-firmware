@@ -121,6 +121,7 @@ class SwitchSensor:
 
         self.runout_helper = EventsRunoutHelper(config, self.name)
         self.get_status = self.runout_helper.get_status
+        self.get_name = self.runout_helper.get_name
 
     def _button_handler(self, eventtime, state):
         self.runout_helper.note_filament_present(state)
