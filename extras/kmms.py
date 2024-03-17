@@ -70,6 +70,10 @@ class KmmsVirtualEndstop:
         return completion
 
     def stop(self):
+        completion, _ = self.waiting
+        if not completion.test():
+            completion.complete(None)
+
         ffi_main, ffi_lib = chelper.get_ffi()
         ffi_lib.trdispatch_stop(self._trdispatch)
         res = [trsync.stop() for trsync in self._trsyncs]
