@@ -8,6 +8,7 @@ from typing import Iterable
 
 import chelper
 from extras.kmms_path import KmmsPath
+from extras.motion_report import DumpStepper
 from gcode import GCodeDispatch
 from klippy import Printer
 from mcu import MCU_trsync, TRSYNC_TIMEOUT
@@ -222,7 +223,11 @@ class Kmms:
             self.respond_info("get_extruder_stepper_position")
 
             st = drive_extruder.get_object().extruder_stepper.stepper
-            st._query_mcu_position()
+            ds = DumpStepper(self.printer, st)
+
+            ds_data, _ = ds.get_step_queue(st.get_mcu().print_time_to_clock(0),
+                               st.get_mcu().print_time_to_clock(start_time))
+            ds.log_steps(ds_data)
 
             initial_pos = get_extruder_stepper_position(drive_extruder.get_object().extruder_stepper)
             self.respond_info("initial_pos=%.3f" % initial_pos)
@@ -261,6 +266,11 @@ class Kmms:
 
             self.respond_info("activate_extruder 2")
             self.activate_extruder(from_command=from_command)
+
+            ds_data, _ = ds.get_step_queue(st.get_mcu().print_time_to_clock(start_time),
+                                           st.get_mcu().print_time_to_clock(self.toolhead.get_last_move_time()))
+            ds.log_steps(ds_data)
+
             return True
         except Exception:
             # Make sure expected extruder is always activated
