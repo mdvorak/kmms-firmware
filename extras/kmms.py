@@ -263,6 +263,7 @@ class Kmms:
             # TODO update path
 
             self.respond_info("Moved %.3f mm, hit %s endstop" % (distance, endstop_hit))
+            self.toolhead.dwell(0.001)
 
             self.respond_info("activate_extruder 2")
             self.activate_extruder(from_command=from_command)
